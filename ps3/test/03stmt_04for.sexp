@@ -1,0 +1,1 @@
+((Seq((Exp((Assign x((Int 0)2))2))2)((Seq((For((Assign i((Int 10)3))3)((Binop((Var i)3)Gt((Int 0)3))3)((Assign i((Binop((Var i)3)Minus((Int 1)3))3))3)((Exp((Assign x((Binop((Var x)4)Plus((Var i)4))4))4))4))3)((Return((Var x)6))6))3))2)

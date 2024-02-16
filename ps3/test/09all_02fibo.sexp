@@ -1,0 +1,1 @@
+((Seq((Exp((Assign limit((Int 1000)5))5))5)((Seq((Exp((Assign x((Int 0)6))6))6)((Seq((Exp((Assign y((Int 1)7))7))7)((Seq((While((Binop((Var y)8)Lt((Var limit)8))8)((Seq((Exp((Assign t((Binop((Var x)9)Plus((Var y)9))9))9))9)((Seq((Exp((Assign x((Var y)10))10))10)((Exp((Assign y((Var t)11))11))11))10))9))8)((Return((Var y)13))13))8))7))6))5)

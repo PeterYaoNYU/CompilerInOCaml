@@ -89,7 +89,7 @@ let rec compile_exp (exp:Ast.exp) : Mips.inst list =
                 | Ast.Minus -> [Mips.Sub (Mips.R2, Mips.R8, Mips.R2)]  (* Subtract R8 from R2 and store the result in R2 *)
                 | Ast.Times -> [Mips.Mul (Mips.R2, Mips.R2, Mips.R8)]  (* Multiply R2 by R8 and store the result in R2 *)
                 | Ast.Div -> [Mips.Div (Mips.R2, Mips.R8, Mips.R2)]  (* Divide R2 by R8 *)
-                | Ast.Lt -> [Mips.Slt (Mips.R2, Mips.R8, Mips.R2)]  (* Set R2 to 1 if R2 is less than R8, otherwise set it to 0 *)
+                | Ast.Lt -> [Mips.Slt (Mips.R2, Mips.R8, Reg Mips.R2)]  (* Set R2 to 1 if R2 is less than R8, otherwise set it to 0 *)
                 | Ast.Gt -> [Mips.Slt (Mips.R2, Mips.R2, Mips.R8)]  (* Set R2 to 1 if R8 is less than R2, otherwise set it to 0 *)
                 | Ast.Gte -> 
                     let temp = new_temp() in  (* Temporary label for the inverse of lt *)

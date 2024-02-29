@@ -1,0 +1,4 @@
+main() {
+  printInt(12 + 4);
+  return 0;
+}

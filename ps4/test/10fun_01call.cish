@@ -1,0 +1,7 @@
+f(i) {
+  return 1;
+}
+
+main() {
+  return f(0);
+}

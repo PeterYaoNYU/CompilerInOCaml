@@ -63,5 +63,5 @@ add(x, y) {
   }
 }
 main() {
-  return add(add(1, 1), add(1, 2));
+  printInt (add(add(1, 1), add(1, 2)));
 }

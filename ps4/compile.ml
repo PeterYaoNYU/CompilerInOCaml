@@ -11,6 +11,9 @@ let label_counter = ref 0
 let new_int() = (label_counter := (!label_counter) + 1; !label_counter)
 let new_label() = "L" ^ (string_of_int (new_int()))
 
+(* prevent name creash with the MIPS Assembly code *)
+let crash_names = ["add"; "sub"; "mul"; "div"]  (* Example crash names *)
+
 (* keep an env for each procedure in the compiler, BEGIN Here *)
 
 (* Environment to keep track of variable offsets and labels *)
@@ -152,6 +155,12 @@ let rec compile_exp (exp:Ast.exp) env : Mips.inst list * environment =
           e_code @ store_code, env  (* Combine the code for the expression and the store operation, and return the updated environment *)
       )
   | Call (f_name, args), _ ->
+    let modified_f_name = 
+      if List.mem f_name crash_names then 
+        f_name ^ "_func" 
+      else 
+        f_name 
+    in
     (* Save caller-saved registers *)
     (* let saved_regs = [Mips.R8; Mips.R9; Mips.R10; Mips.R11; Mips.R12; Mips.R13; Mips.R14; Mips.R15; Mips.R24; Mips.R25] in *)
     let saved_regs = [Mips.R8] in
@@ -186,7 +195,7 @@ let rec compile_exp (exp:Ast.exp) env : Mips.inst list * environment =
       eval_and_push_args (args_code @ arg_code @ move_to_reg_code @ push_to_stack) rest env'' (arg_idx + 1)
   in
   let args_code, env_after_args = eval_and_push_args [] (List.rev args) env 0 in
-  let call_instr = [Mips.Jal f_name] in
+  let call_instr = [Mips.Jal modified_f_name] in
 
   (* Pop arguments off the stack after the call *)
   let pop_args_code, env_after_pop = List.fold_left (fun (code_accum, env_accum) _ ->
@@ -277,6 +286,13 @@ let compile_func func =
   let num_saved_registers = 2 in
   let num_local_vars = 20 in
   let frame_size = (num_local_vars + num_saved_registers) * 4 in
+  (* Check and modify the function name if it's in the list of crash names *)
+  let modified_func_name = 
+    if List.mem funcsig.name crash_names then 
+      funcsig.name ^ "_func" 
+    else 
+      funcsig.name 
+  in
 
   (* Adjust initial_env to include argument offsets correctly, assuming all arguments are on the stack *)
   let initial_varmap, args_setup_code, stack_offset =
@@ -298,7 +314,7 @@ let compile_func func =
   in
   let initial_env = { varmap = initial_varmap; stack_offset = stack_offset } in
 
-  let entry_label = funcsig.name in
+  let entry_label = modified_func_name in
 
   let prologue = [
     Mips.Label entry_label;

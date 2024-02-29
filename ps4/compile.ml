@@ -160,40 +160,48 @@ let rec compile_exp (exp:Ast.exp) env : Mips.inst list * environment =
       (env', code_accum @ code)
     ) (env, []) saved_regs in
 
+  (* TODO: Pass first 4 arguments by registers, instead of all by stack *)
+  (* Evaluate each argument and push onto the stack in reverse order for correct order in callee *)
+  let rec eval_and_push_args args_code args env arg_idx =
+    match args with
+    | [] -> args_code, env
+    | arg :: rest ->
+      let arg_code, env' = compile_exp arg env in
+      let env'', push_to_stack = push Mips.R2 env' in
+      let move_to_reg_code = 
+        (
+          if arg_idx < 4 then
+            let reg = match arg_idx with
+              | 0 -> Mips.R4 (* $a0 *)
+              | 1 -> Mips.R5 (* $a1 *)
+              | 2 -> Mips.R6 (* $a2 *)
+              | 3 -> Mips.R7 (* $a3 *)
+              | _ -> failwith "Index out of bounds"
+            in
+            [Mips.Add(reg, Mips.R2, Reg (Mips.R0))]  (* Move result to appropriate register *)
+          else
+            []
+        )
+          in 
+      eval_and_push_args (args_code @ arg_code @ move_to_reg_code @ push_to_stack) rest env'' (arg_idx + 1)
+  in
+  let args_code, env_after_args = eval_and_push_args [] (List.rev args) env 0 in
+  let call_instr = [Mips.Jal f_name] in
 
-    (* Evaluate each argument and move the result to the correct register or stack. *)
-    let rec eval_args args_code args env arg_idx =
-      match args with
-      | [] -> args_code, env
-      | arg :: rest ->
-        let arg_code, env' = compile_exp arg env in
-        if arg_idx < 4 then
-          (* For the first four arguments, use registers $a0 to $a3. *)
-          let reg = match arg_idx with
-            | 0 -> Mips.R4
-            | 1 -> Mips.R5
-            | 2 -> Mips.R6
-            | 3 -> Mips.R7
-            | _ -> raise (Failure "Argument register index out of bounds")
-          in
-          let move_to_reg = [Mips.Add (reg, Mips.R2, Mips.Reg Mips.R0)] in
-          eval_args (args_code @ arg_code @ move_to_reg) rest env' (arg_idx + 1)
-        else
-          (* For arguments beyond the first four, push them onto the stack. *)
-          let push_to_stack = push Mips.R2 env' in
-          eval_args (args_code @ arg_code @ snd push_to_stack) rest (fst push_to_stack) (arg_idx + 1)
-    in
-    let args_code, env_after_args = eval_args [] args env 0 in
-    let call_instr = [Mips.Jal f_name] in
+  (* Pop arguments off the stack after the call *)
+  let pop_args_code, env_after_pop = List.fold_left (fun (code_accum, env_accum) _ ->
+    let env', code = pop Mips.R0 env_accum in  (* Use R0 as a dummy register since we're just cleaning up the stack *)
+    (code_accum @ code, env')
+  ) ([], env_after_args) args in
 
-    (* Restore caller-saved registers in reverse order *)
-    let env, restore_caller_saved_code = List.fold_left (fun (env_accum, code_accum) reg ->
-      let env', code = pop reg env_accum in
-      (env', code @ code_accum)
-    ) (env_after_args, []) (List.rev saved_regs) in
-    (* TODO: also pop the arguments off the stack *)
-    (* Combine argument evaluation code, the function call, and potentially handle the return value. *)
-    save_caller_saved_code @ args_code @ call_instr @ restore_caller_saved_code, env
+  (* Restore caller-saved registers in reverse order *)
+  let env, restore_caller_saved_code = List.fold_left (fun (env_accum, code_accum) reg ->
+    let env', code = pop reg env_accum in
+    (env', code @ code_accum)
+  ) (env_after_pop, []) (List.rev saved_regs) in
+  (* TODO: also pop the arguments off the stack *)
+  (* Combine argument evaluation code, the function call, and potentially handle the return value. *)
+  save_caller_saved_code @ args_code @ call_instr @ pop_args_code @ restore_caller_saved_code, env
   
 
 
@@ -282,11 +290,11 @@ let compile_func func =
           (* Move argument from caller's stack position to current stack position *)
           let caller_offset = 4 * counter in  (* Adjust based on current argument's position in caller's stack *)
           [Mips.Lw (Mips.R9, Mips.R30, Word32.fromInt caller_offset);
-            Mips.Sw (Mips.R9, Mips.Fp, Word32.fromInt arg_offset_from_fp)]
+            Mips.Sw (Mips.R9, Mips.R30, Word32.fromInt arg_offset_from_fp)]
         in
         create_varmap_and_setup rest (stack_offset - 4) ((arg, arg_offset_from_fp) :: varmap) (setup_code @ move_arg_code) (counter + 1)
     in
-    create_varmap_and_setup funcsig.args 0 [] [] 0
+    create_varmap_and_setup funcsig.args (-(num_saved_registers * 4)) [] [] 0
   in
   let initial_env = { varmap = initial_varmap; stack_offset = stack_offset } in
 
@@ -294,10 +302,10 @@ let compile_func func =
 
   let prologue = [
     Mips.Label entry_label;
-    Mips.Subu (Mips.R29, Mips.R29, Word32.fromInt frame_size);
+    Mips.Add (Mips.R29, Mips.R29, Immed (Word32.neg (Word32.fromInt frame_size))); (* Allocate space for the frame *)
     Mips.Sw (Mips.R30, Mips.R29, Word32.fromInt (frame_size - 4));
     Mips.Sw (Mips.R31, Mips.R29, Word32.fromInt (frame_size - 8));
-    Mips.Addu (Mips.R30, Mips.R29, Word32.fromInt frame_size);
+    Mips.Add (Mips.R30, Mips.R29, Immed(Word32.fromInt frame_size));
   ] in
 
   let body_code, _ = compile_stmt funcsig.body initial_env in
@@ -307,7 +315,7 @@ let compile_func func =
     Mips.Label epilogue_label;
     Mips.Lw (Mips.R30, Mips.R29, Word32.fromInt (frame_size - 4));
     Mips.Lw (Mips.R31, Mips.R29, Word32.fromInt (frame_size - 8));
-    Mips.Addu (Mips.R29, Mips.R29, Word32.fromInt frame_size);
+    Mips.Add (Mips.R29, Mips.R29, Immed(Word32.fromInt frame_size));
     Mips.Jr (Mips.R31);
   ] in
 

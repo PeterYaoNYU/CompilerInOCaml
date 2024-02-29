@@ -3,5 +3,5 @@ f(i) {
 }
 
 main() {
-  return f(0);
+  return f(3);
 }

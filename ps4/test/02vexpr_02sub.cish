@@ -1,6 +1,7 @@
 main() {
   let x = 12;
   let y = 4;
+  printInt(12);
   return x - y;
 }
 

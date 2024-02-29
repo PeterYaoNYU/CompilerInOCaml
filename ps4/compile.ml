@@ -191,7 +191,7 @@ let rec compile_exp (exp:Ast.exp) env : Mips.inst list * environment =
       let env', code = pop reg env_accum in
       (env', code @ code_accum)
     ) (env_after_args, []) (List.rev saved_regs) in
-    (* TODO: also pop the more than 4 arguments off the stack *)
+    (* TODO: also pop the arguments off the stack *)
     (* Combine argument evaluation code, the function call, and potentially handle the return value. *)
     save_caller_saved_code @ args_code @ call_instr @ restore_caller_saved_code, env
   
@@ -262,93 +262,58 @@ let rec compile_stmt ((s, _): Ast.stmt) env : Mips.inst list * environment =
 
 
 
-
-(* Function to compile a function signature to MIPS assembly *)
 let compile_func func =
-  (* Calculate frame size based on the number of local variables and saved registers.
-     For simplicity, let's assume each variable and register occupies 4 bytes and
-     that we save 2 registers: $fp and $ra. *)
   let funcsig = match func with
     | Ast.Fn f -> f
   in
-  let num_saved_registers = 2 in  (* You will need to adjust this based on actual usage *)
-  (* TODO: calculate the number of local variables in a function call, for now, set it to 10 *)
-  let num_local_vars = 20 in (* Calculate the number of local variables in the function body *)
+  let num_saved_registers = 2 in
+  let num_local_vars = 20 in
   let frame_size = (num_local_vars + num_saved_registers) * 4 in
 
-  (* Initialize the environment with the offsets for function arguments *)
-  let initial_env=
-    let rec create_varmap args offset varmap = 
+  (* Adjust initial_env to include argument offsets correctly, assuming all arguments are on the stack *)
+  let initial_varmap, args_setup_code, stack_offset =
+    let rec create_varmap_and_setup args stack_offset varmap setup_code counter =
       match args with
-      | [] -> varmap
+      | [] -> varmap, setup_code, stack_offset
       | arg :: rest ->
-        (* TODO: handle the case where the number of arguments is smaller than 4 *)
-        (* If there are more than four arguments, they will be on the stack. *)
-        (* The first four arguments are in $a0 to $a3 and not on the stack initially. *)
-        let new_offset, new_varmap =
-          if offset >= 0 then
-            (* Argument is on the stack, above the saved return address and frame pointer *)
-            let position = offset in
-            position + 4, (arg, position) :: varmap
-          else
-            (* Argument is in a register and not on the stack yet *)
-            offset + 1, varmap
+        (* Each argument is above the frame pointer in the caller's frame, adjust for saved registers *)
+        let arg_offset_from_fp = -(4 * (counter + num_saved_registers + 1)) in
+        let move_arg_code = 
+          (* Move argument from caller's stack position to current stack position *)
+          let caller_offset = 4 * counter in  (* Adjust based on current argument's position in caller's stack *)
+          [Mips.Lw (Mips.R9, Mips.R30, Word32.fromInt caller_offset);
+            Mips.Sw (Mips.R9, Mips.Fp, Word32.fromInt arg_offset_from_fp)]
         in
-        create_varmap rest new_offset new_varmap
+        create_varmap_and_setup rest (stack_offset - 4) ((arg, arg_offset_from_fp) :: varmap) (setup_code @ move_arg_code) (counter + 1)
     in
-    let saved_registers_size = 8 (* Return address and frame pointer *)
-    in
-    let varmap_with_args = create_varmap funcsig.args (-4) [] in
-    let stack_offset =
-      if List.length funcsig.args > 4 then
-        (* Only allocate space on the stack for arguments beyond the first four. *)
-        (List.length funcsig.args - 4) * 4
-      else
-        0
-    in 
-    {
-      varmap = varmap_with_args;
-      stack_offset = -(stack_offset + saved_registers_size);
-    }
+    create_varmap_and_setup funcsig.args 0 [] [] 0
   in
+  let initial_env = { varmap = initial_varmap; stack_offset = stack_offset } in
 
-  (* Generate label for the function entry *)
   let entry_label = funcsig.name in
 
-  (* Generate function prologue *)
-  let prologue =
-    [
-      Mips.Label entry_label; (* Function entry point *)
-      Mips.Add (Mips.R29, Mips.R29, Immed (Word32.neg (Word32.fromInt frame_size))); (* Allocate space for the frame *)
-      (* Save callee-saved registers *)
-      Mips.Sw (Mips.R30, Mips.R29, Word32.fromInt (frame_size - 4)); (* Save old frame pointer *)
-      Mips.Sw (Mips.R31, Mips.R29, Word32.fromInt (frame_size - 8)); (* Save return address *)
-      (* Update frame pointer *)
-      Mips.Add (Mips.R30, Mips.R29, Immed(Word32.fromInt frame_size));
-      (* More callee-saved registers would be saved here if used *)
-    ]
-  in
+  let prologue = [
+    Mips.Label entry_label;
+    Mips.Subu (Mips.R29, Mips.R29, Word32.fromInt frame_size);
+    Mips.Sw (Mips.R30, Mips.R29, Word32.fromInt (frame_size - 4));
+    Mips.Sw (Mips.R31, Mips.R29, Word32.fromInt (frame_size - 8));
+    Mips.Addu (Mips.R30, Mips.R29, Word32.fromInt frame_size);
+  ] in
 
-  (* Generate code to evaluate the function body *)
   let body_code, _ = compile_stmt funcsig.body initial_env in
 
-  (* Generate function epilogue *)
   let epilogue_label = "end_" ^ funcsig.name in
-  let epilogue =
-    [
-      Mips.Label epilogue_label; (* Label for the function end *)
-      (* Restore callee-saved registers *)
-      Mips.Lw (Mips.R30, Mips.R29, Word32.fromInt (frame_size - 4)); (* Restore old frame pointer *)
-      Mips.Lw (Mips.R31, Mips.R29, Word32.fromInt (frame_size - 8)); (* Restore return address *)
-      (* Deallocate the frame and return *)
-      Mips.Add (Mips.R29, Mips.R29, Immed(Word32.fromInt frame_size));
-      Mips.Jr (Mips.R31);
-    ]
-  in
+  let epilogue = [
+    Mips.Label epilogue_label;
+    Mips.Lw (Mips.R30, Mips.R29, Word32.fromInt (frame_size - 4));
+    Mips.Lw (Mips.R31, Mips.R29, Word32.fromInt (frame_size - 8));
+    Mips.Addu (Mips.R29, Mips.R29, Word32.fromInt frame_size);
+    Mips.Jr (Mips.R31);
+  ] in
 
-  (* Combine prologue, body, and epilogue *)
-  let complete_code = prologue @ body_code @ epilogue in
-  complete_code
+  prologue @ args_setup_code @ body_code @ epilogue
+
+
           
 
 let rec compile (p:Ast.program) : result =

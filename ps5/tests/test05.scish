@@ -1,0 +1,1 @@
+(let (y (lambda (f) ((lambda (rec) (f (rec rec))) (lambda (rec) (f (rec rec))) ))) (+ 1 1))

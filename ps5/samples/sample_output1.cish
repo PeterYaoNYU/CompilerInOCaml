@@ -21,6 +21,12 @@ main(dynenv) {
      return result;
    }
 }
+// when compiling the lambda function. It malloc 8. The first 4 bytes are for function pointers.
+// the second are for the the captured environment. Together it returns a closure. 
+
+// the function4 takes one parameter, the environment. The dyenv+4 stores the argument. 
+
+
 t4(dynenv) {
    let result = 0; {
      result = *(dynenv+4);

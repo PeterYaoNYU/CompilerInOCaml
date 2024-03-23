@@ -63,6 +63,10 @@ let add_function fn =
 let compile_binop = function
   | Scish_ast.Plus -> Cish_ast.Plus
   | Scish_ast.Minus -> Cish_ast.Minus
+  | Scish_ast.Times -> Cish_ast.Times
+  | Scish_ast.Div -> Cish_ast.Div
+  | Scish_ast.Eq -> Cish_ast.Eq
+  | Scish_ast.Lt -> Cish_ast.Lt
   | _ -> failwith "Operation not supported"
 
 (* need change, look up depth instead   *)
@@ -81,15 +85,32 @@ let rec compile_exp (e:Scish_ast.exp) : Cish_ast.program =
     | PrimApp (op, exps) ->
       (
         match op with 
-        | Scish_ast.Plus -> 
+        | Scish_ast.Plus | Scish_ast.Minus | Scish_ast.Times | Scish_ast.Div | Scish_ast.Eq | Scish_ast.Lt -> 
           let compile_first = compile_aux (List.hd exps) env in
           let temp = fresh_name() in  
           let assign_temp = Exp(Assign(temp,(Var "result",0)),0),0 in
           let compile_second = compile_aux (List.hd (List.tl exps)) env in
           let binop = compile_binop op in
-          let compute_stmt = Exp(Assign("result",(Binop((Var temp,0),Plus,(Var "result",0)),0)),0),0 in
+          let compute_stmt = Exp(Assign("result",(Binop((Var temp,0),binop,(Var "result",0)),0)),0),0 in
           let return_stmt = make_seq([compile_first; assign_temp; compile_second; compute_stmt]) in
           Let(temp,(Int 0,0),return_stmt),0
+        | Scish_ast.Cons ->
+          let t = fresh_name() in 
+          let malloc_exp = Exp(Assign(t, (Malloc (Int 8, 0), 0)), 0), 0 in
+          let compile_first = compile_aux (List.hd exps) env in
+          let store_first = Exp(Store((Var t,0),(Var "result",0)),0),0 in
+          let compile_second = compile_aux (List.hd (List.tl exps)) env in
+          let store_second = Exp(Store((Binop((Var t,0),Plus,(Int 4,0)),0),(Var "result",0)),0),0 in
+          let assign_result = Exp(Assign("result", (Var t, 0)), 0), 0 in
+          Let (t, (Int 0, 0), make_seq([malloc_exp; compile_first; store_first; compile_second; store_second; assign_result])), 0
+        | Scish_ast.Fst -> 
+          let compile_first = compile_aux (List.hd exps) env in
+          let assign_result = Exp(Assign("result", (Load((Var "result",0)),0)),0),0 in
+          make_seq([compile_first; assign_result])
+        | Scish_ast.Snd ->
+          let compile_first = compile_aux (List.hd exps) env in
+          let assign_result = Exp(Assign("result", (Load((Binop((Var "result",0),Plus,(Int 4,0)),0)),0)),0),0 in
+          make_seq([compile_first; assign_result])
         | _ -> failwith "Operation not supported"
       )
     | Var x -> 
@@ -167,6 +188,15 @@ let rec compile_exp (e:Scish_ast.exp) : Cish_ast.program =
           ,0))
         ,0))
     ,0)
+    | If (e1, e2, e3) -> 
+      let compile_e1 = compile_aux e1 env in
+      let t = fresh_name () in
+      let assign_t = Exp(Assign(t, (Var "result", 0)), 0), 0 in
+      let compile_e2 = compile_aux e2 env in
+      let compile_e3 = compile_aux e3 env in
+      let if_stmt = If((Var t, 0), compile_e2, compile_e3), 0 in
+      let all_stmt = make_seq([compile_e1; assign_t; if_stmt]) in 
+      Let(t, (Int 0, 0), all_stmt), 0
     | _ -> failwith "Expression type not supported"
   
   in

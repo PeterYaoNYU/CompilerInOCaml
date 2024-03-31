@@ -1,0 +1,11 @@
+/* Sum a list until reaching the first 0 in the list */
+(let (z (lambda (f) ( 
+	              (lambda (x) (f (lambda (y) ((x x) y))))
+	              (lambda (x) (f (lambda (y) ((x x) y)))))))
+     (let (aux (z (lambda (f) (lambda (accl)
+     	  (let (hd (fst (snd accl)))
+	       (if (= hd 0) (fst accl)
+     	       	  	    (f (cons (+ hd (fst accl))
+	                       (snd (snd accl))))))))))
+          (let (sumlist (lambda (x) (aux (cons 0 x))))
+	  (sumlist (cons 1 (cons 5 (cons 3 (cons 0 0))))))))

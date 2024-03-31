@@ -1,0 +1,1 @@
+(let (x (cons 1 (cons 2 (cons 3 (cons 4 5))))) (+ (fst x) (+ (fst (snd x)) (fst (snd (snd x))))))

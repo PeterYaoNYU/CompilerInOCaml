@@ -1,0 +1,39 @@
+main(dynenv) {
+   let result = 0; {
+     let dynenv = 0; {
+       let t1 = 0; {
+         let t2 = 0; {
+           let t3 = 0; {
+             result = malloc(8);
+             *result = t4;
+             *(result+4) = dynenv;
+             t1 = *result;
+             t2 = *(result+4);
+             result = 4;
+             t3 = malloc(8);
+             *t3 = t2;
+             *(t3+4) = result;
+             result = t1(t3);
+           }
+         }
+       }
+     }  
+     return result;
+   }
+}
+// when compiling the lambda function. It malloc 8. The first 4 bytes are for function pointers.
+// the second are for the the captured environment. Together it returns a closure. 
+
+// the function4 takes one parameter, the environment. The dyenv+4 stores the argument. 
+
+
+t4(dynenv) {
+   let result = 0; {
+     result = *(dynenv+4);
+     let t5 = result; {
+       result = 3;
+       result = t5+result;
+     }
+     return result;
+   }
+}

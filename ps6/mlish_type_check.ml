@@ -6,6 +6,28 @@ let type_error(s:string) = (print_string s; raise TypeError)
 
 let type_variable_counter = ref 0
 
+let rec tipe_to_string (t: tipe) : string =
+  match t with
+  | Tvar_t x -> "'" ^ x
+  | Guess_t t ->
+    (
+      match !t with 
+      | None -> "guess"
+      | Some t' ->"guess" ^ (tipe_to_string t')
+    )
+  | Int_t -> "int"
+  | Bool_t -> "bool"
+  | Unit_t -> "unit"
+  | Fn_t(t1, t2) ->
+      "(" ^ tipe_to_string t1 ^ " -> " ^ tipe_to_string t2 ^ ")"
+  | Pair_t(t1, t2) ->
+      "(" ^ tipe_to_string t1 ^ " * " ^ tipe_to_string t2 ^ ")"
+  | List_t t ->
+      "(" ^ tipe_to_string t ^ " list)"
+
+let print_tipe (t: tipe) : unit =
+  print_endline (tipe_to_string t)
+
 (* for the generalize function *)
 let freshvar_counter = ref 0
 let freshvar () =
@@ -16,6 +38,7 @@ let freshvar () =
 let guess() : tipe = 
   let current_count = !type_variable_counter in
   type_variable_counter := current_count + 1;
+  print_string ("g" ^ (string_of_int current_count) ^ "\n");
   Tvar_t ("g" ^ (string_of_int current_count))
 
 let rec substitute b t : tipe = 
@@ -68,7 +91,7 @@ let minus lst1 lst2 =
   List.filter (fun x -> not (List.mem x lst2)) lst1 
 
 let rec subst_guess subs t = match t with
-  | Tvar_t tv -> (try List.assoc tv subs with Not_found -> t)
+  | Tvar_t tv -> (try Mlish_ast.Tvar_t (List.assoc tv subs) with Not_found -> t)
   | Guess_t r ->
     (
       match !r with
@@ -110,12 +133,15 @@ let rec is_equal (t1:tipe) (t2:tipe):bool =
         | _, _ -> false)
   | _, _ -> false
 
-let rec unify (t1: tipe) (t2: tipe): bool = 
-  if (t1 == t2) then true else
+let rec unify (t1: tipe) (t2: tipe): bool =
+  print_string "In unify\n"; 
+  print_tipe t1; print_tipe t2;
+  if (is_equal t1 t2) then true else
   match t1, t2 with 
   | Guess_t r, _ -> 
+    print_string "In Guess\n";
     (match !r with
-    | None -> r := Some t2; true
+    | None -> r := Some t2; print_string "unifyting to type 2"; true
     | Some t1' -> unify t1' t2
     )
   | _, Guess_t _ -> unify t2 t1
@@ -128,31 +154,33 @@ let rec unify (t1: tipe) (t2: tipe): bool =
   | Tvar_t(tv1), Tvar_t(tv2) when tv1 = tv2 -> true
   | _, _ -> false
 
-let rec tc (env: (varr * tipe_scheme) list) (e: exp) = 
+let rec tc (env: (var * tipe_scheme) list) (e: exp) = 
   match e with 
   | Var x, _ -> instantiate (lookup env x)
   | PrimApp (prim, exp_list), _ -> 
     (match prim, exp_list with
+    | Int int, [] -> Int_t
     | Plus, [e1; e2]
     | Minus, [e1; e2] -> 
         let t1 = tc env e1 in
         let t2 = tc env e2 in
-        if unify (t1, Int_t) && unify (t2, Int_t) then Int_t else type_error "Arithmetic operation failed"
+        if (unify t1 Int_t) && (unify t2 Int_t) then Int_t else type_error "Arithmetic operation failed"
     | Eq, [e1; e2] -> 
         let t1 = tc env e1 in
         let t2 = tc env e2 in
-        if unify (t1, Int_t) && unify (t2, Int_t) then Bool_t else type_error "Equality operation failed"
+        if (unify t1 Int_t) && (unify t2 Int_t) then Bool_t else type_error "Equality operation failed"
     | _, _ -> type_error "Invalid primitive application")
   | Fn(x, e), _ -> 
+    print_string "In Fn\n";
     let g = guess() in
     Fn_t (g, tc ((x, Forall([], g))::env) e)
   | App(e1, e2), _ ->
     let t1 = tc env e1 in
     let t2 = tc env e2 in
     let t = guess() in
-    if unify (t1, Fn_t(t2, t)) then t else type_error "App failed"
+    if (unify t1 (Fn_t(t2,t))) then t else type_error "App failed"
   | Let(x, e1, e2), _ ->
-    let s = generalize(env, tc env e1) in 
+    let s = generalize env (tc env e1) in 
     tc ((x, s)::env) e2 
 
 

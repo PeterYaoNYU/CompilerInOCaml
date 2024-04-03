@@ -70,7 +70,7 @@ let ctype2s (c:ctype):string =
     match c with
       CInt -> "int"
     | CVoidPtr -> "void*"
-    | CFnPtr -> "void*"
+    | CFnPtr -> "FunctionPointer"
     | Unknown -> "void*"
     | CIntPtr -> "int*"
 
@@ -103,7 +103,12 @@ let rec e2s (p:int) ((e,_):exp) : string =
     let (start,stop) = if myprec >= p then ("","") else ("(",")") in
     start ^ (match e with
       Int i -> string_of_int i
-    | Var (x, t) -> "(" ^ (ctype2s t) ^ ")" ^ x
+    | Var (x, t) -> 
+      (
+        match t with
+          | CFnPtr -> "((" ^ (ctype2s t) ^ ")" ^ x ^")"
+          | _ -> "(" ^ (ctype2s t) ^ ")" ^ x
+      )
     | Binop(e1,b,e2) -> (e2s myprec e1) ^ (binop2s b) ^ (e2s myprec e2)
     | Not e -> "!" ^ (e2s myprec e)
     | And(e1,e2) -> (e2s myprec e1) ^ " && " ^ (e2s myprec e2)
@@ -155,5 +160,5 @@ let fn2string f =
     (s2s 3 f'.body) ^ "}\n"
 
 (* convert a program to a string *)
-let prog2string fs = String.concat "" (List.map fn2string fs)
+let prog2string fs = "#include <stdlib.h> \ntypedef void* (*FunctionPointer)(void);\n" ^ (String.concat "" (List.map fn2string  (List.rev fs)))
 

@@ -1,55 +1,57 @@
-main() {
-   let dyenv = 0; {
-     let result = 0; {
-       let t1 = 0; {
-         let t2 = 0; {
-           let t3 = 0; {
-             let t4 = 0; {
-               let t5 = 0; {
-                 let t6 = 0; {
-                   result = malloc(8);
-                   *result = t7;
-                   *(result+4) = dyenv;
-                   t4 = *result;
-                   t5 = *(result+4);
-                   result = 42;
-                   t6 = malloc(8);
-                   *t6 = result;
-                   *(t6+4) = t5;
-                   result = t4(t6);
+#include <stdlib.h> 
+typedef void* (*FunctionPointer)(void);
+void* t8(void* dyenv) {
+   void* result = 0; {
+     void* t9 = 0; {
+       result = (int) (**((void*)dyenv+4));
+       t9 = (int) ((int)result);
+       result = (int) (*(void*)dyenv);
+       result = (int) ((int)t9+(int)result);
+     }
+     return (void*)result;
+   }
+}
+void* t7(void* dyenv) {
+   void* result = 0; {
+     result = (void*) (malloc(8));
+     *((FunctionPointer)result) = ((FunctionPointer)t8);
+     *((int)result+4) = (void*)dyenv;
+     return (void*)result;
+   }
+}
+void* main() {
+   void* dyenv = 0; {
+     void* result = 0; {
+       void* t1 = 0; {
+         void* t2 = 0; {
+           void* t3 = 0; {
+             void* t4 = 0; {
+               void* t5 = 0; {
+                 void* t6 = 0; {
+                   result = (void*) (malloc(8));
+                   *((FunctionPointer)result) = ((FunctionPointer)t7);
+                   *((int)result+4) = (void*)dyenv;
+                   t4 = (FunctionPointer) (*(void*)result);
+                   t5 = (void*) (*((void*)result+4));
+                   result = (int) (42);
+                   t6 = (void*) (malloc(8));
+                   *(int*)t6 = (int)result;
+                   *((int)t6+4) = (void*)t5;
+                   result = (void*) (((FunctionPointer)t4)((void*)t6));
                  }
                }
              }
-             t1 = *result;
-             t2 = *(result+4);
-             result = 3;
-             t3 = malloc(8);
-             *t3 = result;
-             *(t3+4) = t2;
-             result = t1(t3);
+             t1 = (FunctionPointer) (*(void*)result);
+             t2 = (void*) (*((void*)result+4));
+             result = (int) (3);
+             t3 = (void*) (malloc(8));
+             *(int*)t3 = (int)result;
+             *((int)t3+4) = (void*)t2;
+             result = (void*) (((FunctionPointer)t1)((void*)t3));
            }
          }
        }
-       return result;
+       return (int)result;
      }
-   }
-}
-t7(dyenv) {
-   let result = 0; {
-     result = malloc(8);
-     *result = t8;
-     *(result+4) = dyenv;
-     return result;
-   }
-}
-t8(dyenv) {
-   let result = 0; {
-     let t9 = 0; {
-       result = **(dyenv+4);
-       t9 = result;
-       result = *dyenv;
-       result = t9+result;
-     }
-     return result;
    }
 }

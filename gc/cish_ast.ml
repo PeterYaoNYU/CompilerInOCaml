@@ -8,7 +8,8 @@ type binop =
   Plus | Minus | Times | Div          (* +, -, *, /           *)
 | Eq | Neq | Lt | Lte | Gt | Gte      (* ==, !=, <, <=, >, >= *)
 
-type ctype = CInt | CVoidPtr | CFnPtr | Unknown | CIntPtr  
+type ctype = CInt | CVoidPtr | CFnPtr | Unknown | CIntPtr of int | CFnPtrPtr | CVoidPtrPtr
+
 
 (* expressions *)
 
@@ -71,8 +72,12 @@ let ctype2s (c:ctype):string =
       CInt -> "int"
     | CVoidPtr -> "void*"
     | CFnPtr -> "FunctionPointer"
+    | CFnPtrPtr -> "FunctionPointer*"
+    | CVoidPtrPtr -> "void**"
     | Unknown -> "void*"
-    | CIntPtr -> "int*"
+    | CIntPtr x -> 
+      let rec stars n = if n <= 0 then "" else "*" ^ stars (n - 1) in
+      "int" ^ stars x
 
 (* expressions 2 strings *)
 (* avoid parentheses by tracking precedence *)
@@ -160,5 +165,5 @@ let fn2string f =
     (s2s 3 f'.body) ^ "}\n"
 
 (* convert a program to a string *)
-let prog2string fs = "#include <stdlib.h> \ntypedef void* (*FunctionPointer)(void);\n" ^ (String.concat "" (List.map fn2string  (List.rev fs)))
+let prog2string fs = "#include <stdlib.h> \ntypedef void* (*FunctionPointer)(void *);\n" ^ (String.concat "" (List.map fn2string  (List.rev fs)))
 

@@ -19,7 +19,7 @@ let depth_to_exp depth : Cish_ast.exp =
       let deref_exp = (Load add_exp, 0) in
       build_exp (depth - 1) deref_exp
   in
-  build_exp depth (Var ("dyenv", CVoidPtr), 0)
+  build_exp depth (Var ("dyenv", (CIntPtr depth)), 0)
 
 
 let rec make_seq (s:Cish_ast.stmt list): Cish_ast.stmt = 
@@ -87,18 +87,18 @@ let rec compile_exp (e:Scish_ast.exp) : Cish_ast.program =
           let t = fresh_name() in 
           let malloc_exp = Exp(Assign(t, CVoidPtr, (Malloc (Int 8, 0), 0)), 0), 0 in
           let compile_first = compile_aux (List.hd exps) env in
-          let store_first = Exp(Store((Var (t, CIntPtr),0),(Var ("result", CInt),0)),0),0 in
+          let store_first = Exp(Store((Var (t, CIntPtr 1),0),(Var ("result", CInt),0)),0),0 in
           let compile_second = compile_aux (List.hd (List.tl exps)) env in
-          let store_second = Exp(Store((Binop((Var (t, CIntPtr),0),Plus,(Int 4,0)),0),(Var ("result", CInt),0)),0),0 in
-          let assign_result = Exp(Assign("result", CIntPtr, (Var (t, CIntPtr), 0)), 0), 0 in
+          let store_second = Exp(Store((Binop((Var (t, CIntPtr 1),0),Plus,(Int 4,0)),0),(Var ("result", CInt),0)),0),0 in
+          let assign_result = Exp(Assign("result", CIntPtr 1, (Var (t, CIntPtr 1), 0)), 0), 0 in
           Let (t, (Int 0, 0), make_seq([malloc_exp; compile_first; store_first; compile_second; store_second; assign_result])), 0
         | Scish_ast.Fst -> 
           let compile_first = compile_aux (List.hd exps) env in
-          let assign_result = Exp(Assign("result", CInt, (Load((Var ("result", CIntPtr),0)),0)),0),0 in
+          let assign_result = Exp(Assign("result", CInt, (Load((Var ("result", CIntPtr 1),0)),0)),0),0 in
           make_seq([compile_first; assign_result])
         | Scish_ast.Snd ->
           let compile_first = compile_aux (List.hd exps) env in
-          let assign_result = Exp(Assign("result", CInt, (Load((Binop((Var ("result", CInt),0),Plus,(Int 4,0)),0)),0)),0),0 in
+          let assign_result = Exp(Assign("result", CInt, (Load((Binop((Var ("result", CIntPtr 1),0),Plus,(Int 1,0)),0)),0)),0),0 in
           make_seq([compile_first; assign_result])
         | _ -> failwith "Operation not supported"
       )
@@ -118,9 +118,9 @@ let rec compile_exp (e:Scish_ast.exp) : Cish_ast.program =
       add_function (Fn fn);
       let malloc_exp = Assign ("result", CVoidPtr, (Malloc (Int 8, 0), 0)), 0 in
 
-      let func_ptr_store = Store ((Var ("result", CFnPtr), 0), (Var (func_name, CFnPtr), 0)), 0 in
+      let func_ptr_store = Store ((Var ("result", CFnPtrPtr), 0), (Var (func_name, CFnPtr), 0)), 0 in
 
-      let env_ptr_store = (Store ((Binop((Var ("result", CInt), 0), Plus, (Int 4, 0)), 0), (Var ("dyenv", CVoidPtr), 0)), 0) in
+      let env_ptr_store = (Store ((Binop((Var ("result", CVoidPtrPtr), 0), Plus, (Int 1, 0)), 0), (Var ("dyenv", CVoidPtr), 0)), 0) in
 
       let seq_ops =  make_seq([ Exp malloc_exp, 0; Exp func_ptr_store, 0; Exp env_ptr_store, 0]) in
       seq_ops
@@ -132,8 +132,8 @@ let rec compile_exp (e:Scish_ast.exp) : Cish_ast.program =
       let malloc_var = fresh_name () in
 
       let lambda_stmt  = compile_aux e1 env in
-      let assign_1 = Exp(Assign(t1, CFnPtr ,(Load (Var ("result", CVoidPtr), 0), 0)), 0), 0 in
-      let assign_t2 =Exp(Assign(t2, CVoidPtr, (Load(Binop((Var ("result", CVoidPtr), 0), Plus, (Int 4, 0)), 0), 0)), 0), 0
+      let assign_1 = Exp(Assign(t1, CFnPtr ,(Load (Var ("result", CVoidPtrPtr), 0), 0)), 0), 0 in
+      let assign_t2 =Exp(Assign(t2, CVoidPtr, (Load(Binop((Var ("result", CVoidPtrPtr), 0), Plus, (Int 1, 0)), 0), 0)), 0), 0
       in
       (* compile e2, which must be an Int, which is in the variable "result" *)
       let arg_exp= compile_aux e2 env in
@@ -143,10 +143,10 @@ let rec compile_exp (e:Scish_ast.exp) : Cish_ast.program =
       let malloc_exp = Exp(Assign (malloc_var, CVoidPtr, (Malloc (Int 8, 0), 0)), 0), 0 in
 
       (* store the argument in the malloced area *)
-      let store_arg = Exp(Store ((Var (malloc_var, CIntPtr), 0), (Var ("result", CInt), 0)), 0), 0 in
+      let store_arg = Exp(Store ((Var (malloc_var, CIntPtr 1), 0), (Var ("result", CInt), 0)), 0), 0 in
 
       (* store the historic env in the second word of the malloc region *)
-      let store_env = Exp(Store ((Binop ((Var (malloc_var, CInt), 0), Plus, (Int 4, 0)), 0), (Var (t2, CVoidPtr), 0)), 0), 0 in
+      let store_env = Exp(Store ((Binop ((Var (malloc_var, CVoidPtrPtr), 0), Plus, (Int 4, 0)), 0), (Var (t2, CVoidPtr), 0)), 0), 0 in
       let call_exp = Exp(Assign ("result", Unknown ,(Call ((Var (t1, CFnPtr), 0), [(Var (malloc_var, CVoidPtr), 0)]), 0)), 0), 0 in
 
       let all_exp = make_seq([lambda_stmt; assign_1; assign_t2; arg_exp; malloc_exp; store_arg; store_env; call_exp]) in

@@ -165,5 +165,5 @@ let fn2string f =
     (s2s 3 f'.body) ^ "}\n"
 
 (* convert a program to a string *)
-let prog2string fs = "#include <stdlib.h> \ntypedef void* (*FunctionPointer)(void *);\n" ^ (String.concat "" (List.map fn2string  (List.rev fs)))
+let prog2string fs = "#include <stdlib.h> \n#include <stdio.h>\ntypedef void* (*FunctionPointer)(void *);\n" ^ (String.concat "" (List.map fn2string  (List.rev fs)))
 

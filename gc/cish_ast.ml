@@ -8,7 +8,7 @@ type binop =
   Plus | Minus | Times | Div          (* +, -, *, /           *)
 | Eq | Neq | Lt | Lte | Gt | Gte      (* ==, !=, <, <=, >, >= *)
 
-type ctype = CInt | CVoidPtr | CFnPtr | Unknown | CIntPtr 
+type ctype = CInt | CVoidPtr | CFnPtr | Unknown | CIntPtr  
 
 (* expressions *)
 
@@ -66,6 +66,14 @@ let binop2s (b:binop):string =
     | Gt -> ">"
     | Gte -> ">="
 
+let ctype2s (c:ctype):string = 
+    match c with
+      CInt -> "int"
+    | CVoidPtr -> "void*"
+    | CFnPtr -> "void*"
+    | Unknown -> "void*"
+    | CIntPtr -> "int*"
+
 (* expressions 2 strings *)
 (* avoid parentheses by tracking precedence *)
 let rec e2s (p:int) ((e,_):exp) : string = 
@@ -95,12 +103,12 @@ let rec e2s (p:int) ((e,_):exp) : string =
     let (start,stop) = if myprec >= p then ("","") else ("(",")") in
     start ^ (match e with
       Int i -> string_of_int i
-    | Var (x, _) -> x
+    | Var (x, t) -> "(" ^ (ctype2s t) ^ ")" ^ x
     | Binop(e1,b,e2) -> (e2s myprec e1) ^ (binop2s b) ^ (e2s myprec e2)
     | Not e -> "!" ^ (e2s myprec e)
     | And(e1,e2) -> (e2s myprec e1) ^ " && " ^ (e2s myprec e2)
     | Or(e1,e2) -> (e2s myprec e1) ^ " || " ^ (e2s myprec e2)
-    | Assign(x, t, e) -> x ^ " = " ^ (e2s myprec e)
+    | Assign(x, t, e) -> x ^ " = " ^ "(" ^ (ctype2s t) ^ ") (" ^ (e2s myprec e) ^ ")"
     | Call(e,es) -> (e2s myprec e) ^ "(" ^ (es2s es) ^ ")"
     | Load e -> "*" ^ (e2s myprec e)
     | Store(e1,e2) -> "*"^(e2s 80 e1)^" = "^(e2s myprec e2)
@@ -143,7 +151,7 @@ let stmt2string s = s2s 0 s
 (* convert a function to a string *)
 let fn2string f = 
     let Fn (f') = f in
-    "int " ^ f'.name ^ "(" ^ (String.concat "," f'.args) ^ ") {\n" ^
+    "void* " ^ f'.name ^ "(" ^ (String.concat ","  f'.args) ^ ") {\n" ^
     (s2s 3 f'.body) ^ "}\n"
 
 (* convert a program to a string *)

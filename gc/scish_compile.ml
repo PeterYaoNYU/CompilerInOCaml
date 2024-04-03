@@ -111,7 +111,7 @@ let rec compile_exp (e:Scish_ast.exp) : Cish_ast.program =
       let env = insert_arg_with_depth env arg in
       let func_name = fresh_name () in
       let body_exp= compile_aux body env in
-      let fn = {name = func_name; args = ["dyenv"]; body =
+      let fn = {name = func_name; args = ["void* dyenv"]; body =
         (Let("result",((Int 0),0), 
           (Seq((body_exp),(Return((Var ("result", Unknown)),0),0)),0)),0)
         ; pos = 0} in

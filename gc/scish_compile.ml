@@ -85,20 +85,20 @@ let rec compile_exp (e:Scish_ast.exp) : Cish_ast.program =
           Let(temp,(Int 0,0),return_stmt),0
         | Scish_ast.Cons ->
           let t = fresh_name() in 
-          let malloc_exp = Exp(Assign(t, CVoidPtr, (Malloc (Int 8, 0), 0)), 0), 0 in
+          let malloc_exp = Exp(Assign(t, CVoidPtr, (Malloc (Int 16, 0), 0)), 0), 0 in
           let compile_first = compile_aux (List.hd exps) env in
-          let store_first = Exp(Store((Var (t, CIntPtr 1),0),(Var ("result", CInt),0)),0),0 in
+          let store_first = Exp(Store((Var (t, CVoidPtrPtr),0),(Var ("result", CVoidPtr),0)),0),0 in
           let compile_second = compile_aux (List.hd (List.tl exps)) env in
-          let store_second = Exp(Store((Binop((Var (t, CIntPtr 1),0),Plus,(Int 1,0)),0),(Var ("result", CInt),0)),0),0 in
+          let store_second = Exp(Store((Binop((Var (t, CVoidPtrPtr),0),Plus,(Int 1,0)),0),(Var ("result", CVoidPtr),0)),0),0 in
           let assign_result = Exp(Assign("result", CIntPtr 1, (Var (t, CIntPtr 1), 0)), 0), 0 in
           Let (t, (Int 0, 0), make_seq([malloc_exp; compile_first; store_first; compile_second; store_second; assign_result])), 0
         | Scish_ast.Fst -> 
           let compile_first = compile_aux (List.hd exps) env in
-          let assign_result = Exp(Assign("result", CInt, (Load((Var ("result", CIntPtr 1),0)),0)),0),0 in
+          let assign_result = Exp(Assign("result", CVoidPtr, (Load((Var ("result", CVoidPtrPtr),0)),0)),0),0 in
           make_seq([compile_first; assign_result])
         | Scish_ast.Snd ->
           let compile_first = compile_aux (List.hd exps) env in
-          let assign_result = Exp(Assign("result", CInt, (Load((Binop((Var ("result", CIntPtr 1),0),Plus,(Int 1,0)),0)),0)),0),0 in
+          let assign_result = Exp(Assign("result", CVoidPtr, (Load((Binop((Var ("result", CVoidPtrPtr),0),Plus,(Int 1,0)),0)),0)),0),0 in
           make_seq([compile_first; assign_result])
         | _ -> failwith "Operation not supported"
       )

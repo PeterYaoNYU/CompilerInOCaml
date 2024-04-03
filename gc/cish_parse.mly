@@ -136,7 +136,7 @@ unaryexp :
 
 atomicexp :
   INT { (Int $1, rhs 1) }
-| ID { (Var $1, rhs 1) }
+| ID { (Var ($1, Unknown), rhs 1) }
 | atomicexp LPAREN RPAREN { (Call($1,[]), rhs 1) }
 | atomicexp LPAREN explist RPAREN { (Call($1,$3), rhs 1) }
 | MALLOC LPAREN yexp RPAREN { (Malloc($3), rhs 1) }

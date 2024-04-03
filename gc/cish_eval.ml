@@ -103,7 +103,7 @@ and eval_exp (e:exp) (env:env) : value =
     let res =  
       match r with
         Int i -> Int_v i
-      | Var x -> lookup x env
+      | Var (x, _) -> lookup x env
       | Binop(e1,b,e2) ->
           let (i1,i2) = (eval_int e1 env, eval_int e2 env) in
           Int_v(match b with

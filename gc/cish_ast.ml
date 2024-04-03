@@ -8,14 +8,19 @@ type binop =
   Plus | Minus | Times | Div          (* +, -, *, /           *)
 | Eq | Neq | Lt | Lte | Gt | Gte      (* ==, !=, <, <=, >, >= *)
 
+type ctype = CInt | CVoidPtr | CFnPtr | Unknown | CIntPtr 
+
+(* expressions *)
+
+
 type rexp = 
   Int of int
-| Var of var
+| Var of var * ctype
 | Binop of exp * binop * exp
 | Not of exp                          (* !x *)
 | And of exp * exp                    (* x < y && y < z *)
 | Or of exp * exp                     (* x < y || x < z *)
-| Assign of var * exp                 (* x = y+42 *)
+| Assign of var * ctype * exp                 (* x = y+42 *)
 | Call of exp * (exp list)            (* f(x,y,z) *)
 | Load of exp                         (* *(x+3) *)
 | Store of exp * exp                  (* *(x+3) = e *)
@@ -67,7 +72,7 @@ let rec e2s (p:int) ((e,_):exp) : string =
     let prec e = 
         match e with
           Int i -> 100
-        | Var x -> 100
+        | Var (x, _) -> 100
         | Binop(_,Plus,_) -> 50
         | Binop(_,Minus,_) -> 50
         | Binop(_,Times,_) -> 75
@@ -90,12 +95,12 @@ let rec e2s (p:int) ((e,_):exp) : string =
     let (start,stop) = if myprec >= p then ("","") else ("(",")") in
     start ^ (match e with
       Int i -> string_of_int i
-    | Var x -> x
+    | Var (x, _) -> x
     | Binop(e1,b,e2) -> (e2s myprec e1) ^ (binop2s b) ^ (e2s myprec e2)
     | Not e -> "!" ^ (e2s myprec e)
     | And(e1,e2) -> (e2s myprec e1) ^ " && " ^ (e2s myprec e2)
     | Or(e1,e2) -> (e2s myprec e1) ^ " || " ^ (e2s myprec e2)
-    | Assign(x,e) -> x ^ " = " ^ (e2s myprec e)
+    | Assign(x, t, e) -> x ^ " = " ^ (e2s myprec e)
     | Call(e,es) -> (e2s myprec e) ^ "(" ^ (es2s es) ^ ")"
     | Load e -> "*" ^ (e2s myprec e)
     | Store(e1,e2) -> "*"^(e2s 80 e1)^" = "^(e2s myprec e2)
@@ -131,14 +136,14 @@ let rec s2s i (s,_) =
       (tab i)^"for ("^(exp2string e1)^";"^(exp2string e2)^";"^
                        (exp2string e3)^") {\n"^(s2s (i+2) s)^(tab i)^"}\n"
     | Let(x,e,s) -> 
-      (tab i)^"let "^x^" = "^(exp2string e)^"; {\n"^(s2s (i+2) s)^(tab i)^"}\n"
+      (tab i)^"void* "^x^" = "^(exp2string e)^"; {\n"^(s2s (i+2) s)^(tab i)^"}\n"
 (* convert a statement to string with starting nesting depth of 0 *)
 let stmt2string s = s2s 0 s
 
 (* convert a function to a string *)
 let fn2string f = 
     let Fn (f') = f in
-    f'.name ^ "(" ^ (String.concat "," f'.args) ^ ") {\n" ^
+    "int " ^ f'.name ^ "(" ^ (String.concat "," f'.args) ^ ") {\n" ^
     (s2s 3 f'.body) ^ "}\n"
 
 (* convert a program to a string *)

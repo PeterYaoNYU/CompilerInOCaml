@@ -4,7 +4,7 @@
 # change to a different ocamlc if you prefer (e.g., ocamlopt)
 COMPILER=ocamlc
  
-all: clean cish scish
+all: clean scish
 
 mips:
 	$(COMPILER) -c word32.ml

@@ -120,7 +120,7 @@ let rec e2s (p:int) ((e,_):exp) : string =
     | Or(e1,e2) -> (e2s myprec e1) ^ " || " ^ (e2s myprec e2)
     | Assign(x, t, e) -> x ^ " = " ^ "(" ^ (ctype2s t) ^ ") (" ^ (e2s myprec e) ^ ")"
     | Call(e,es) -> (e2s myprec e) ^ "(" ^ (es2s es) ^ ")"
-    | Load e -> "*" ^ (e2s myprec e)
+    | Load e -> "(void **) *" ^ (e2s myprec e)
     | Store(e1,e2) -> "*"^(e2s 80 e1)^" = "^(e2s myprec e2)
     | Malloc e -> "malloc("^(e2s myprec e)^")") ^ stop
 and es2s (es:exp list) : string = 

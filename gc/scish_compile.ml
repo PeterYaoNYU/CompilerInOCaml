@@ -15,7 +15,7 @@ let depth_to_exp depth : Cish_ast.exp =
     match depth with 
     | 1 -> Load (current_exp), 0 
     | _ -> 
-      let add_exp = (Binop(current_exp, Plus, (Int 4, 0)), 0) in 
+      let add_exp = (Binop(current_exp, Plus, (Int 1, 0)), 0) in 
       let deref_exp = (Load add_exp, 0) in
       build_exp (depth - 1) deref_exp
   in
@@ -116,7 +116,7 @@ let rec compile_exp (e:Scish_ast.exp) : Cish_ast.program =
           (Seq((body_exp),(Return((Var ("result", Unknown)),0),0)),0)),0)
         ; pos = 0} in
       add_function (Fn fn);
-      let malloc_exp = Assign ("result", CVoidPtr, (Malloc (Int 8, 0), 0)), 0 in
+      let malloc_exp = Assign ("result", CVoidPtr, (Malloc (Int 16, 0), 0)), 0 in
 
       let func_ptr_store = Store ((Var ("result", CFnPtrPtr), 0), (Var (func_name, CFnPtr), 0)), 0 in
 
@@ -140,7 +140,7 @@ let rec compile_exp (e:Scish_ast.exp) : Cish_ast.program =
       (* let arg_stmt = Exp(Assign("result", arg_exp), 0), 0 in *)
       (* malloc a new region, the first word is for storing the argument *)
       (* the second word is for storing historic environment, dyenv from e1, which is t2 basically *)
-      let malloc_exp = Exp(Assign (malloc_var, CVoidPtr, (Malloc (Int 8, 0), 0)), 0), 0 in
+      let malloc_exp = Exp(Assign (malloc_var, CVoidPtr, (Malloc (Int 16, 0), 0)), 0), 0 in
 
       (* store the argument in the malloced area *)
       let store_arg = Exp(Store ((Var (malloc_var, CVoidPtrPtr), 0), (Var ("result", CVoidPtr), 0)), 0), 0 in

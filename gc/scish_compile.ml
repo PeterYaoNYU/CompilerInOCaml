@@ -175,7 +175,7 @@ let rec compile_exp (e:Scish_ast.exp) : Cish_ast.program =
     (Let("dyenv",(Int 0,0),
       (Let("result",(Int 0,0), 
       (Seq((compile_aux e []),
-      (Return(Var ("result", CInt),0),0)),0)
+      (Seq((Print(Var("result",CInt),0),0),(Return(Var ("result", CInt),0),0)),0)),0)
     ),0)),0)
     ; pos = 0} in
   add_function (Fn main_func);

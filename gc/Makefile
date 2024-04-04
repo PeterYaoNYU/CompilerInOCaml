@@ -35,5 +35,12 @@ scish: mips
 	$(COMPILER) -c scish.ml
 	$(COMPILER) -o ps5_scish cish_ast.cmo scish_ast.cmo scish_parse.cmo scish_lex.cmo scish_eval.cmo word32.cmo mips.cmo scish_compile.cmo scish.cmo
 
+
+test:
+	./ps5_scish test.scish > test.c
+	gcc -g -Wall -Wextra -pedantic -I../include -fprofile-arcs -ftest-coverage -MMD -c ../src/log.c -o ../build/test/../src/log.o
+	gcc -g -Wall -L../build/src -o test test.c
+	./test
+	
 clean:
 	-rm *.cmo *.cmi ps5_cish ps5_scish cish_parse.ml cish_parse.mli cish_lex.ml scish_parse.ml scish_parse.mli scish_lex.ml

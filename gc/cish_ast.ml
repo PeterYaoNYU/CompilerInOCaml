@@ -38,6 +38,9 @@ type rstmt =
 | For of exp * exp * exp * stmt       (* for (x=0; x<y; x=x+1) y=y*42; *)
 | Return of exp                       (* return e; *)
 | Let of var * exp * stmt             (* let x=3; in x=x+1; *)
+| Print of exp
+| GC_St
+| GC_Ed
 
 (* every statement comes with its position *)
 and stmt = rstmt * pos
@@ -155,6 +158,14 @@ let rec s2s i (s,_) =
                        (exp2string e3)^") {\n"^(s2s (i+2) s)^(tab i)^"}\n"
     | Let(x,e,s) -> 
       (tab i)^"void* "^x^" = "^(exp2string e)^"; {\n"^(s2s (i+2) s)^(tab i)^"}\n"
+    | Print(e) ->
+      (tab i)^"printf(\"%d\\n\","^(exp2string e)^");\n"
+    | GC_St ->
+      (tab i)^"GarbageCollector gc_;\n"
+      ^(tab i)^"void *bos = __builtin_frame_address(0);\n"
+      ^(tab i)^"gc_start_ext(&gc_, bos, 32, 32, 0.0, DBL_MAX, DBL_MAX);\n"
+    | GC_Ed ->
+      (tab i)^"gc_stop(&gc_);\n"
 (* convert a statement to string with starting nesting depth of 0 *)
 let stmt2string s = s2s 0 s
 
@@ -165,5 +176,5 @@ let fn2string f =
     (s2s 3 f'.body) ^ "}\n"
 
 (* convert a program to a string *)
-let prog2string fs = "#include <stdlib.h> \n#include <stdio.h>\ntypedef void* (*FunctionPointer)(void *);\n" ^ (String.concat "" (List.map fn2string  (List.rev fs)))
+let prog2string fs = "#include <stdlib.h> \n#include <stdio.h>\n#include \"./src/gc.c\"\ntypedef void* (*FunctionPointer)(void *);\n" ^ (String.concat "" (List.map fn2string  (List.rev fs)))
 

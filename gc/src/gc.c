@@ -12,8 +12,8 @@
  * the garbage collector will be very chatty.
  */
 #undef LOGLEVEL
-#define LOGLEVEL LOGLEVEL_INFO
-// #define LOGLEVEL LOGLEVEL_DEBUG
+// #define LOGLEVEL LOGLEVEL_INFO
+#define LOGLEVEL LOGLEVEL_DEBUG
 
 /*
  * The size of a pointer.

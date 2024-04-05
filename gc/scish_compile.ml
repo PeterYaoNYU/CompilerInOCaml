@@ -111,7 +111,7 @@ let rec compile_exp (e:Scish_ast.exp) : Cish_ast.program =
       let env = insert_arg_with_depth env arg in
       let func_name = fresh_name () in
       let body_exp= compile_aux body env in
-      let fn = {name = func_name; args = ["void* dyenv"]; body =
+      let fn = {name = func_name; args = ["void* dyenv";"GarbageCollector gc_"]; body =
         (Let("result",((Int 0),0), 
           (Seq((body_exp),(Return((Var ("result", Unknown)),0),0)),0)),0)
         ; pos = 0} in
@@ -147,7 +147,7 @@ let rec compile_exp (e:Scish_ast.exp) : Cish_ast.program =
 
       (* store the historic env in the second word of the malloc region *)
       let store_env = Exp(Store ((Binop ((Var (malloc_var, CVoidPtrPtr), 0), Plus, (Int 1, 0)), 0), (Var (t2, CVoidPtr), 0)), 0), 0 in
-      let call_exp = Exp(Assign ("result", Unknown ,(Call ((Var (t1, CFnPtr), 0), [(Var (malloc_var, CVoidPtr), 0)]), 0)), 0), 0 in
+      let call_exp = Exp(Assign ("result", Unknown ,(Call ((Var (t1, CFnPtr), 0), [(Var (malloc_var, CVoidPtr), 0);(Var("", GC),0)]), 0)), 0), 0 in
 
       let all_exp = make_seq([lambda_stmt; assign_1; assign_t2; arg_exp; malloc_exp; store_arg; store_env; call_exp]) in
       (
@@ -172,11 +172,15 @@ let rec compile_exp (e:Scish_ast.exp) : Cish_ast.program =
   in
   (* let main_body = compile_aux e in *)
   let main_func = {name = "main"; args = []; body = 
-    (Let("dyenv",(Int 0,0),
+    (Seq((GC_St,0),(Let("dyenv",(Int 0,0),
       (Let("result",(Int 0,0), 
       (Seq((compile_aux e []),
-      (Seq((Print(Var("result",CInt),0),0),(Return(Var ("result", CInt),0),0)),0)),0)
-    ),0)),0)
+        (Seq((GC_Ed,0),
+          (Seq((Print(Var("result",CInt),0),0),(Return(Var ("result", CInt),0),0))
+          ,0)
+        ),0)
+      ),0)
+    ),0)),0)),0)
     ; pos = 0} in
   add_function (Fn main_func);
   List.rev !global_functions  (* Return the final program *)

@@ -8,7 +8,7 @@ type binop =
   Plus | Minus | Times | Div          (* +, -, *, /           *)
 | Eq | Neq | Lt | Lte | Gt | Gte      (* ==, !=, <, <=, >, >= *)
 
-type ctype = CInt | CVoidPtr | CFnPtr | Unknown | CIntPtr of int | CFnPtrPtr | CVoidPtrPtr
+type ctype = CInt | CVoidPtr | CFnPtr | Unknown | CIntPtr of int | CFnPtrPtr | CVoidPtrPtr | GC | GC_Ref
 
 
 (* expressions *)
@@ -81,6 +81,7 @@ let ctype2s (c:ctype):string =
     | CIntPtr x -> 
       let rec stars n = if n <= 0 then "" else "*" ^ stars (n - 1) in
       "int" ^ stars x
+    | _ -> "" (*GC and GC_Ref*)
 
 (* expressions 2 strings *)
 (* avoid parentheses by tracking precedence *)
@@ -115,6 +116,8 @@ let rec e2s (p:int) ((e,_):exp) : string =
       (
         match t with
           | CFnPtr -> "((" ^ (ctype2s t) ^ ")" ^ x ^")"
+          | GC -> "gc_"
+          | GC_Ref -> "&gc_"
           | _ -> "(" ^ (ctype2s t) ^ ")" ^ x
       )
     | Binop(e1,b,e2) -> (e2s myprec e1) ^ (binop2s b) ^ (e2s myprec e2)
@@ -125,7 +128,7 @@ let rec e2s (p:int) ((e,_):exp) : string =
     | Call(e,es) -> (e2s myprec e) ^ "(" ^ (es2s es) ^ ")"
     | Load e -> "(void **) *" ^ (e2s myprec e)
     | Store(e1,e2) -> "*"^(e2s 80 e1)^" = "^(e2s myprec e2)
-    | Malloc e -> "malloc("^(e2s myprec e)^")") ^ stop
+    | Malloc e -> "gc_malloc(&gc_,"^(e2s myprec e)^")") ^ stop
 and es2s (es:exp list) : string = 
     match es with
       [] -> ""
@@ -163,7 +166,7 @@ let rec s2s i (s,_) =
     | GC_St ->
       (tab i)^"GarbageCollector gc_;\n"
       ^(tab i)^"void *bos = __builtin_frame_address(0);\n"
-      ^(tab i)^"gc_start_ext(&gc_, bos, 32, 32, 0.0, DBL_MAX, DBL_MAX);\n"
+      ^(tab i)^"gc_start(&gc_, bos);\n"
     | GC_Ed ->
       (tab i)^"gc_stop(&gc_);\n"
 (* convert a statement to string with starting nesting depth of 0 *)
@@ -176,5 +179,5 @@ let fn2string f =
     (s2s 3 f'.body) ^ "}\n"
 
 (* convert a program to a string *)
-let prog2string fs = "#include <stdlib.h> \n#include <stdio.h>\n#include \"./src/gc.c\"\ntypedef void* (*FunctionPointer)(void *);\n" ^ (String.concat "" (List.map fn2string  (List.rev fs)))
+let prog2string fs = "#include <stdlib.h> \n#include <stdio.h>\n#include \"./src/gc.c\"\ntypedef void* (*FunctionPointer)(void *, GarbageCollector);\n" ^ (String.concat "" (List.map fn2string  (List.rev fs)))
 

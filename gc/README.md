@@ -8,3 +8,9 @@
 - [x] Passed all tests converting cish output to legitimate c code
 - [ ] Integrating the mark and sweep garbage collector and tests if it is working correctly
 
+# update
+assemble
+add command in makefile
+## compile
+make
+make -B test case=01

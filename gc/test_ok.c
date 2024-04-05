@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include "./src/gc.c"
 typedef void* (*FunctionPointer)(void *, GarbageCollector);
-void* t8(void* dyenv,GarbageCollector gc_) {
+void* t8(void* dyenv, GarbageCollector gc_) {
    void* result = 0; {
      void* t9 = 0; {
        result = (void*) ((void **) *(void **) *((void**)dyenv+1));
@@ -13,7 +13,7 @@ void* t8(void* dyenv,GarbageCollector gc_) {
      return (void*)result;
    }
 }
-void* t7(void* dyenv,GarbageCollector gc_) {
+void* t7(void* dyenv, GarbageCollector gc_) {
    void* result = 0; {
      result = (void*) (gc_malloc(&gc_,16));
      *(FunctionPointer*)result = ((FunctionPointer)t8);
@@ -22,11 +22,11 @@ void* t7(void* dyenv,GarbageCollector gc_) {
    }
 }
 void* main() {
-   GarbageCollector gc_;
-   void *bos = __builtin_frame_address(0);
-   gc_start(&gc_, bos);
    void* dyenv = 0; {
      void* result = 0; {
+      GarbageCollector gc_;
+      void *bos = __builtin_frame_address(0);
+      gc_start(&gc_, bos);
        void* t1 = 0; {
          void* t2 = 0; {
            void* t3 = 0; {

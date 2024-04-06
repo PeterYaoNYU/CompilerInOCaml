@@ -12,5 +12,5 @@
 assemble
 add command in makefile
 ## compile
-make
+make   
 make -B test case=01

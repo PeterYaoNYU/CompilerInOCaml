@@ -80,6 +80,7 @@ let instantiate s : tipe =
   | Forall(vs, t) ->
     print_endline "Variables in vs:";
     List.iter (fun var_name -> print_endline var_name) vs;
+    print_endline  "End of vs";
     let b = List.map (fun a -> (a, guess())) vs in
     substitute b t 
 
@@ -103,12 +104,15 @@ let minus lst1 lst2 =
 
   (* subs is a list of pairs, the fst of the pairs in tipe t needs to be changed to the snds *)
 let rec subst_guess subs t = match t with
-  | Tvar_t tv -> (try Mlish_ast.Tvar_t (List.assoc tv subs) with Not_found -> t)
+  | Tvar_t tv -> t
   | Guess_t r ->
     (
       match !r with
       | Some t' -> subst_guess subs t'
-      | None -> (Guess_t r)
+      | None -> 
+        let new_t = List.assoc r subs in
+        r := Some  (Tvar_t new_t);
+        Tvar_t new_t
     )
   | Fn_t (t1, t2) -> Fn_t (subst_guess subs t1, subst_guess subs t2)
   | Pair_t (t1, t2) -> Pair_t (subst_guess subs t1, subst_guess subs t2)
@@ -123,20 +127,26 @@ let generalize env t =
   print_endline "In generalize";
   print_tipe t;
   let t_gs = guesses_of_type t in
-  print_string "t_gs: ";
-  print_string_list t_gs;
-  print_endline "End of t_gs";
-  let env_bound_vars = (* Collect all bound type variables from the environment *)
+  (* print_string "t_gs: ";
+  print_int (List.length t_gs); *)
+  (* print_string_list t_gs; *)
+  (* print_endline "End of t_gs"; *)
+
+  (* let env_bound_vars = (* Collect all bound type variables from the environment *)
     List.fold_left (fun acc (_, scheme) ->
       match scheme with
       | Forall(vs, _) -> List.append acc vs
       | _ -> acc
-    ) [] env in
+    ) [] env in *)
+  
+  let env_bound_vars = [] in
+
+
   (* let env_gs = List.fold_left (fun acc gs -> List.append acc gs) [] env_list_gs in *)
   let diff = minus t_gs env_bound_vars in
-  print_string "diff: ";
-  print_string_list diff;
-  print_endline "End of diff";
+  (* print_string "diff: "; *)
+  (* print_string_list diff; *)
+  (* print_endline "End of diff"; *)
   let gs_vs = List.map (fun g -> (g, freshvar ())) diff in
   let tc = subst_guess gs_vs t in
   Forall (List.map snd gs_vs, tc)
@@ -177,9 +187,9 @@ let rec is_equal (t1:tipe) (t2:tipe):bool =
     | Int_t | Bool_t | Unit_t -> false
 
 let rec unify (t1: tipe) (t2: tipe): bool =
-  (* print_string "In unify, and types are: ";  *)
-  (* print_tipe t1; print_tipe t2; *)
-  (* print_endline "End of unify"; *)
+  print_string "In unify, and types are: "; 
+  print_tipe t1; print_tipe t2;
+  print_endline "End of unify";
   if (is_equal t1 t2) then true else
   match t1, t2 with 
   | Guess_t r, _ when occurs_check r t2 ->  false
@@ -206,6 +216,7 @@ let rec tc (env: (var * tipe_scheme) list) (e: exp) =
     (match prim, exp_list with
     | Int int, [] -> Int_t
     | Bool bool, [] -> Bool_t
+    | Unit, [] -> Unit_t
     | Plus, [e1; e2]
     | Minus, [e1; e2]
     | Times, [e1; e2] ->
@@ -216,11 +227,25 @@ let rec tc (env: (var * tipe_scheme) list) (e: exp) =
         let t1 = tc env e1 in
         let t2 = tc env e2 in
         if (unify t1 Int_t) && (unify t2 Int_t) then Bool_t else type_error "Equality operation failed"
+    | Lt, [e1; e2] -> 
+        let t1 = tc env e1 in
+        let t2 = tc env e2 in
+        if (unify t1 Int_t) && (unify t2 Int_t) then Bool_t else type_error "Less than operation failed"
     | Fst, [e1] ->
       let t1 = tc env e1 in
       (
         match t1 with
           | Pair_t (t, _) -> t
+          | Guess_t r -> 
+            (
+              match !r with
+              | Some Pair_t (t1, t2) -> t1
+              | None ->
+                let g1 = guess() in
+                let g2 = guess() in
+                unify t1 (Pair_t (g1, g2)); g1
+              | _ -> type_error "Fst applied to non-pair, fail in guess"
+            )
           | _ -> type_error "Fst applied to non-pair"
       )
     | Snd, [e1] ->
@@ -228,16 +253,21 @@ let rec tc (env: (var * tipe_scheme) list) (e: exp) =
         (
           match t1 with
             | Pair_t (_, t) -> t
+            | Guess_t r -> 
+              (
+              match !r with
+                | Some Pair_t (t1, t2) -> t2
+                | None ->
+                  let g1 = guess() in
+                  let g2 = guess() in
+                  unify t1 (Pair_t (g1, g2)); g2
+                | _ -> type_error "Snd applied to non-pair, fail in guess"
+              )
             | _ -> type_error "Snd applied to non-pair"
         )
     | Cons, [e1; e2] ->
-      (* print_endline "In Cons"; *)
       let t1 = tc env e1 in
-      (* print_endline "Before printing t1"; *)
-      (* print_tipe t1; *)
-      (* print_endline "After printing t1"; *)
       let t2 = tc env e2 in
-      (* print_tipe t2; *)
       (
         match t2 with
         | List_t t -> if unify t1 t then List_t t else type_error "Cons type mismatch"
@@ -245,6 +275,7 @@ let rec tc (env: (var * tipe_scheme) list) (e: exp) =
         | _ -> type_error "Cons applied to non-list"
       )
     | Pair, [e1; e2] ->
+      print_endline "In Pair";
       let t1 = tc env e1 in
       let t2 = tc env e2 in
       Pair_t (t1, t2)
@@ -263,11 +294,28 @@ let rec tc (env: (var * tipe_scheme) list) (e: exp) =
         let t1 = tc env e1 in
         (match t1 with
         | List_t t -> t
+        | Guess_t r -> 
+          (
+            match !r with
+              | Some List_t t'-> t' 
+              | Some t' -> t'
+              | None -> 
+                let g = guess() in
+                unify t1 (List_t g); g
+          )
         | _ -> type_error "Hd applied to non-list")
     | Tl, [e1] ->
         let t1 = tc env e1 in
         (match t1 with
         | List_t _ -> t1
+        | Guess_t r -> 
+          (
+            match !r with
+              | Some t' -> t'
+              | None ->
+                let g = guess() in
+                unify t1 (List_t g); t1
+          )
         | _ -> type_error "Tl applied to non-list")
     | _, _ -> type_error "Invalid primitive application")
   | Fn(x, e), _ -> 
@@ -284,6 +332,11 @@ let rec tc (env: (var * tipe_scheme) list) (e: exp) =
     print_string "In Let\n";
     let s = generalize env (tc env e1) in 
     tc ((x, s)::env) e2 
+  | If (e1, e2, e3), _ ->
+    let t1 = tc env e1 in
+    let t2 = tc env e2 in
+    let t3 = tc env e3 in
+    if (unify t1 Bool_t) && (unify t2 t3) then t2 else type_error "If failed"
 
 
 let type_check_exp (e:Mlish_ast.exp) : tipe =

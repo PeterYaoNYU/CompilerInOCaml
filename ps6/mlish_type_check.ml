@@ -85,14 +85,14 @@ let instantiate s : tipe =
 
 (* helpers for the generalize implementation *)
 let rec guesses_of_type t = match t with
-  | Tvar_t x -> [x]
+  | Tvar_t x -> []
   | Guess_t r -> 
     begin match !r with
     | Some t' -> guesses_of_type t'
     | None -> 
-      let new_var = freshvar () in
-      r := Some (Tvar_t new_var); 
-      [new_var]
+      (* let new_var = freshvar () in
+      r := Some (Tvar_t new_var);  *)
+      [r]
     end
   | Fn_t (t1, t2) | Pair_t (t1, t2) -> List.append (guesses_of_type t1) (guesses_of_type t2)
   | List_t t' -> guesses_of_type t'

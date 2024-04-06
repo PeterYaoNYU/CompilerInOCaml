@@ -1,4 +1,2 @@
-(fun y->
-let x = (fun z -> z y) in
+let x = (fun z -> z)in
 x x
-)

@@ -227,10 +227,10 @@ let rec unify (t1: tipe) (t2: tipe): bool =
   (* print_endline "End of unify"; *)
   if (is_equal t1 t2) then true else
   match t1, t2 with 
-  | Guess_t r, _ when occurs_check r t2 -> print_endline "occurred!"; false
+  | Guess_t r, _ when occurs_check r t2 -> false
   | Guess_t r, _ -> 
     (* print_endline "Unifying Guess_t"; *)
-    print_tipe t2;
+    (* print_tipe t2; *)
     (match !r with
     | Some t1' -> unify t1' t2
     | None -> r := Some t2; true
@@ -285,7 +285,7 @@ let rec tc (env: (var * tipe_scheme) list) (e: exp) =
                 let g1 = guess() in
                 let g2 = guess() in
                 r:= Some (Pair_t (g1, g2));
-                print_endline "return g1 in Fst guess";
+                (* print_endline "return g1 in Fst guess"; *)
                 g1
               | _ -> type_error "Fst applied to non-pair, fail in guess"
             )
@@ -350,7 +350,7 @@ let rec tc (env: (var * tipe_scheme) list) (e: exp) =
     | Tl, [e1] ->
         let t1 = tc env e1 in
         (match t1 with
-        | List_t _ -> print_endline "tail of a list"; t1
+        | List_t _ -> t1
         | Guess_t r -> 
           (
             match !r with

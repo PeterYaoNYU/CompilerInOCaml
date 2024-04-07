@@ -201,7 +201,7 @@ let rec is_equal (t1:tipe) (t2:tipe):bool =
       (match !t1', !t2' with
         | Some t1'', Some t2'' -> is_equal t1'' t2''
         (* | None, None -> t1' := Some (Guess_t t2'); true *)
-        | None, None -> true
+        | None, None -> false
         | _, _ -> false)
   | _, _ -> false
 

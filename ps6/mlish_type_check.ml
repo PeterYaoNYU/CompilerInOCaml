@@ -1,8 +1,8 @@
 open Mlish_ast
 
 exception TypeError
-let type_error(s:string) = (print_string s; raise TypeError)
-(* let type_error(s:string) = (raise TypeError) *)
+(* let type_error(s:string) = (print_string s; raise TypeError) *)
+let type_error(s:string) = (raise TypeError)
 
 
 let type_variable_counter = ref 0
@@ -110,7 +110,7 @@ let rec lookup env x =
 let instantiate s : tipe =
   (* print_endline "In instantiate"; *)
   match s with
-  | Forall([], t) -> print_string "just lambda\n"; t
+  | Forall([], t) -> t
   | Forall(vs, t) ->
     (* print_endline "Variables in vs:"; *)
     (* List.iter (fun var_name -> print_endline var_name) vs; *)
@@ -200,40 +200,96 @@ let rec is_equal (t1:tipe) (t2:tipe):bool =
   | Guess_t(t1'), Guess_t(t2') -> 
       (match !t1', !t2' with
         | Some t1'', Some t2'' -> is_equal t1'' t2''
-        (* | None, None -> t1' := Some (Guess_t t2'); true *)
         | None, None -> false
         | _, _ -> false)
   | _, _ -> false
 
-  let rec occurs_check r t = 
-    match t with
-    | Tvar_t x -> 
-      (match !r with
-       | Some Tvar_t y -> x = y
-       | _ -> false)
-    | Fn_t(t1, t2) | Pair_t(t1, t2) -> occurs_check r t1 || occurs_check r t2
-    | List_t t' -> occurs_check r t'
-    | Guess_t ref_t -> 
-      if r == ref_t then true (* Direct self-reference *)
-      else 
-        (match !ref_t with
-         | Some t' -> occurs_check r t' (* Indirect self-reference *)
-         | None -> false)
-    | Int_t | Bool_t | Unit_t -> false
+let rec occurs_check r t = 
+  match t with
+  | Tvar_t x -> 
+    (match !r with
+      | Some Tvar_t y -> x = y
+      | _ -> false)
+  | Fn_t(t1, t2) | Pair_t(t1, t2) -> occurs_check r t1 || occurs_check r t2
+  | List_t t' -> occurs_check r t'
+  | Guess_t ref_t -> 
+    if r == ref_t then true (* Direct self-reference *)
+    else 
+      (match !ref_t with
+        | Some t' -> occurs_check r t' (* Indirect self-reference *)
+        | None -> false)
+  | Int_t | Bool_t | Unit_t -> false
 
-let rec unify (t1: tipe) (t2: tipe): bool =
-  print_string "In unify, and types are: \n"; 
+let rec occurs (r: tipe option ref) (t:tipe) : bool =
+  match t with
+  | Guess_t (nr) -> (
+      match !nr with
+      | Some a' -> (if r == nr then true else occurs r a')
+      | None -> r == nr
+  )
+  | Int_t | Bool_t | Unit_t ->  false
+  | Fn_t (t1, t2) | Pair_t (t1, t2) -> (occurs r t1) || (occurs r t2)
+  | List_t l -> occurs r l
+  | Tvar_t _ -> false
+
+let rec unify (t1:tipe) (t2:tipe): bool =
+  match t1, t2 with
+(*    | Guess_t ((ref None) as r1), Guess_t ((ref None) as r2) -> r1 == r2
+  | Guess_t (Some a'), _ -> unify a' t2
+  | Guess_t (None as r), t2 -> (if occurs r t2 then type_error "LOOPED TYPE" else (r := Some t2; true))*)
+  | Guess_t (r1), _ -> (
+      match !r1 with
+      | Some a' -> unify a' t2
+      | None -> (
+          match t2 with
+          | Guess_t (r2) -> (
+              match !r2 with
+              | None -> (if r1 == r2 then true else (r1 := Some t2; true)) (* t2 also a guess None: check address *)
+              | Some a' -> unify t1 a'
+          )
+          | _ -> (if occurs r1 t2 then raise TypeError else (r1 := Some t2; true))
+      )
+  )
+  | _, Guess_t(_) -> unify t2 t1
+  | Int_t, Int_t | Bool_t, Bool_t | Unit_t, Unit_t -> true
+  | Fn_t (t1a, t1b), Fn_t(t2a, t2b) ->
+      (unify t1a t2a) && (unify t1b t2b)
+  | Pair_t (t1a, t1b), Pair_t (t2a, t2b) ->
+      (unify t1a t2a) && (unify t1b t2b)
+  | List_t l1, List_t l2 -> unify l1 l2
+  | Tvar_t v1, Tvar_t v2 -> (if v1 = v2 then true else raise TypeError)
+  | _, _ -> (raise TypeError)
+
+(* let rec unify (t1: tipe) (t2: tipe): bool =
+  (* print_string "In unify, and types are: \n"; 
   print_tipe t1; print_tipe t2;
-  print_endline "End of unify";
-  if (is_equal t1 t2) then true else
+  print_endline "End of unify"; *)
+  (* print_endline "End of unify"; *)
+  (* if (is_equal t1 t2) then true else *)
   match t1, t2 with 
-  | Guess_t r, _ when occurs_check r t2 -> false
+  | Guess_t r, _ when occurs_check r t2 -> print_endline "occur check fail"; false
   | Guess_t r, _ -> 
     (* print_endline "Unifying Guess_t"; *)
     (* print_tipe t2; *)
     (match !r with
     | Some t1' -> unify t1' t2
-    | None -> r := Some t2; print_string "in unify guesss "; print_tipe t1; true
+    | None -> 
+      (
+        match t2 with 
+        | Guess_t r' ->
+          (
+            match !r' with
+            | Some t2' -> unify (Guess_t r) t2'
+            | None -> 
+              if r == r' then true
+              else 
+                (
+                  r := Some t2;
+                  true
+                )
+          )
+        | _ -> r := Some t2; true
+      )
     )
   | _, Guess_t _ -> unify t2 t1
   | Int_t, Int_t -> true
@@ -243,12 +299,12 @@ let rec unify (t1: tipe) (t2: tipe): bool =
   | Pair_t(t1a, t1b), Pair_t(t2a, t2b) -> unify t1a t2a && unify t1b t2b
   | List_t(t1), List_t(t2) -> unify t1 t2
   | Tvar_t(tv1), Tvar_t(tv2) when tv1 = tv2 -> true
-  | _, _ -> false
+  | _, _ -> false *)
 
 let rec tc (env: (var * tipe_scheme) list) (e: exp) =
-  print_endline (expr2string e); 
+  (* print_endline (expr2string e);  *)
   match e with 
-  | Var x, _ -> print_string "instantiate...";instantiate (lookup env x)
+  | Var x, _ -> instantiate (lookup env x)
   | PrimApp (prim, exp_list), _ -> 
     (match prim, exp_list with
     | Int int, [] -> Int_t
@@ -271,8 +327,7 @@ let rec tc (env: (var * tipe_scheme) list) (e: exp) =
         if (unify t1 Int_t) && (unify t2 Int_t) then Bool_t else type_error "Less than operation failed"
     | Fst, [e1] ->
       let t1 = tc env e1 in
-      print_endline "In Fst";
-      print_tipe t1;
+      (* print_tipe t1; *)
       (
         match t1 with
           | Pair_t (t, _) -> 
@@ -287,8 +342,6 @@ let rec tc (env: (var * tipe_scheme) list) (e: exp) =
                 let g2 = guess() in
                 r:= Some (Pair_t (g1, g2));
                 (* print_endline "return g1 in Fst guess"; *)
-                print_tipe t1;
-                print_tipe g1;
                 g1
               | _ -> type_error "Fst applied to non-pair, fail in guess"
             )
@@ -298,13 +351,13 @@ let rec tc (env: (var * tipe_scheme) list) (e: exp) =
       let t1 = tc env e1 in
         (
           match t1 with
-            | Pair_t (_, t) -> print_endline "already a pair"; t
+            | Pair_t (_, t) -> t
             | Guess_t r -> 
               (
               match !r with
-                | Some Pair_t (t1, t2) -> print_endline "already a guess pair"; t2
+                | Some Pair_t (t1, t2) -> t2
                 | None ->
-                  print_endline "In Snd guess";
+                  (* print_endline "In Snd guess"; *)
                   let g1 = guess() in
                   let g2 = guess() in
                   r:= Some (Pair_t (g1, g2));
@@ -370,9 +423,6 @@ let rec tc (env: (var * tipe_scheme) list) (e: exp) =
   | App(e1, e2), _ ->
     let t1 = tc env e1 in
     let t2 = tc env e2 in
-    print_endline "In App";
-    print_tipe t1;
-    print_tipe t2;
     let t = guess() in
     if (unify t1 (Fn_t(t2,t))) then t else type_error "App failed"
   | Let(x, e1, e2), _ ->

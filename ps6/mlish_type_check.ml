@@ -1,11 +1,45 @@
 open Mlish_ast
 
 exception TypeError
-let type_error(s:string) = (print_string s; raise TypeError)
-(* let type_error(s:string) = (raise TypeError) *)
+(* let type_error(s:string) = (print_string s; raise TypeError) *)
+let type_error(s:string) = (raise TypeError)
 
 
 let type_variable_counter = ref 0
+
+
+let rec expr2string ((e, _): exp) : string =
+  match e with
+  | Var var -> "Var " ^ var
+  | PrimApp (prim, exps) -> "PrimApp (" ^ prim2string prim ^ ", [" ^ String.concat "; " (List.map expr2string exps) ^ "])"
+  | Fn (v, e) -> "Fn (" ^ v ^ ", " ^ expr2string e ^ ")"
+  | App (e1, e2) -> "App (" ^ expr2string e1 ^ ", " ^ expr2string e2 ^ ")"
+  | If (e1, e2, e3) -> "If (" ^ expr2string e1 ^ ", " ^ expr2string e2 ^ ", " ^ expr2string e3 ^ ")"
+  | Let (v, e1, e2) -> "Let (" ^ v ^ ", " ^ expr2string e1 ^ ", " ^ expr2string e2 ^ ")"
+and prim2string prim = 
+  match prim with
+  | Int n -> "Int " ^ string_of_int n
+  | Bool b -> "Bool " ^ string_of_bool b
+  | Unit -> "Unit"
+  | Plus -> "Plus"
+  | Minus -> "Minus"
+  | Times -> "Times"
+  | Div -> "Div"
+  | Eq -> "Eq"
+  | Lt -> "Lt"
+  | Pair -> "Pair"
+  | Fst -> "Fst"
+  | Snd -> "Snd"
+  | Nil -> "Nil"
+  | Cons -> "Cons"
+  | IsNil -> "IsNil"
+  | Hd -> "Hd"
+  | Tl -> "Tl"
+
+(* Function to print an expression *)
+let print_expr expr =
+  print_endline (expr2string expr);;
+
 
 let rec tipe_to_string (t: tipe) : string =
   match t with
@@ -74,13 +108,13 @@ let rec lookup env x =
       else lookup rest x
       
 let instantiate s : tipe =
-  print_endline "In instantiate";
+  (* print_endline "In instantiate"; *)
   match s with
-  | Forall([], t) -> print_endline "the variables list is empty in instantiate"; t
+  | Forall([], t) -> t
   | Forall(vs, t) ->
-    print_endline "Variables in vs:";
-    List.iter (fun var_name -> print_endline var_name) vs;
-    print_endline  "End of vs";
+    (* print_endline "Variables in vs:"; *)
+    (* List.iter (fun var_name -> print_endline var_name) vs; *)
+    (* print_endline  "End of vs"; *)
     let b = List.map (fun a -> (a, guess())) vs in
     substitute b t 
 
@@ -124,8 +158,8 @@ let print_string_list l =
   print_string "\n";;
 
 let generalize env t =
-  print_endline "In generalize";
-  print_tipe t;
+  (* print_endline "In generalize"; *)
+  (* print_tipe t; *)
   let t_gs = guesses_of_type t in
   (* print_string "t_gs: ";
   print_int (List.length t_gs); *)
@@ -187,17 +221,19 @@ let rec is_equal (t1:tipe) (t2:tipe):bool =
     | Int_t | Bool_t | Unit_t -> false
 
 let rec unify (t1: tipe) (t2: tipe): bool =
-  print_string "In unify, and types are: "; 
+  (* print_string "In unify, and types are: \n"; 
   print_tipe t1; print_tipe t2;
-  print_endline "End of unify";
+  print_endline "End of unify"; *)
+  (* print_endline "End of unify"; *)
   if (is_equal t1 t2) then true else
   match t1, t2 with 
-  | Guess_t r, _ when occurs_check r t2 ->  false
+  | Guess_t r, _ when occurs_check r t2 -> print_endline "occurred!"; false
   | Guess_t r, _ -> 
     (* print_endline "Unifying Guess_t"; *)
+    print_tipe t2;
     (match !r with
-    | None -> r := Some t2; true
     | Some t1' -> unify t1' t2
+    | None -> r := Some t2; true
     )
   | _, Guess_t _ -> unify t2 t1
   | Int_t, Int_t -> true
@@ -209,7 +245,8 @@ let rec unify (t1: tipe) (t2: tipe): bool =
   | Tvar_t(tv1), Tvar_t(tv2) when tv1 = tv2 -> true
   | _, _ -> false
 
-let rec tc (env: (var * tipe_scheme) list) (e: exp) = 
+let rec tc (env: (var * tipe_scheme) list) (e: exp) =
+  (* print_endline (expr2string e);  *)
   match e with 
   | Var x, _ -> instantiate (lookup env x)
   | PrimApp (prim, exp_list), _ -> 
@@ -221,6 +258,7 @@ let rec tc (env: (var * tipe_scheme) list) (e: exp) =
     | Minus, [e1; e2]
     | Times, [e1; e2] ->
         let t1 = tc env e1 in
+        (* print_tipe t1; *)
         let t2 = tc env e2 in
         if (unify t1 Int_t) && (unify t2 Int_t) then Int_t else type_error "Arithmetic operation failed"
     | Eq, [e1; e2] -> 
@@ -233,17 +271,22 @@ let rec tc (env: (var * tipe_scheme) list) (e: exp) =
         if (unify t1 Int_t) && (unify t2 Int_t) then Bool_t else type_error "Less than operation failed"
     | Fst, [e1] ->
       let t1 = tc env e1 in
+      (* print_tipe t1; *)
       (
         match t1 with
-          | Pair_t (t, _) -> t
+          | Pair_t (t, _) -> 
+            t
           | Guess_t r -> 
             (
               match !r with
               | Some Pair_t (t1, t2) -> t1
               | None ->
+                (* print_endline "In Fst guess"; *)
                 let g1 = guess() in
                 let g2 = guess() in
-                unify t1 (Pair_t (g1, g2)); g1
+                r:= Some (Pair_t (g1, g2));
+                print_endline "return g1 in Fst guess";
+                g1
               | _ -> type_error "Fst applied to non-pair, fail in guess"
             )
           | _ -> type_error "Fst applied to non-pair"
@@ -258,9 +301,11 @@ let rec tc (env: (var * tipe_scheme) list) (e: exp) =
               match !r with
                 | Some Pair_t (t1, t2) -> t2
                 | None ->
+                  (* print_endline "In Snd guess"; *)
                   let g1 = guess() in
                   let g2 = guess() in
-                  unify t1 (Pair_t (g1, g2)); g2
+                  r:= Some (Pair_t (g1, g2));
+                  g2
                 | _ -> type_error "Snd applied to non-pair, fail in guess"
               )
             | _ -> type_error "Snd applied to non-pair"
@@ -275,12 +320,10 @@ let rec tc (env: (var * tipe_scheme) list) (e: exp) =
         | _ -> type_error "Cons applied to non-list"
       )
     | Pair, [e1; e2] ->
-      print_endline "In Pair";
       let t1 = tc env e1 in
       let t2 = tc env e2 in
       Pair_t (t1, t2)
     | Nil, [] -> 
-      (* print_endline "In Nil"; *)
       let g = guess() in List_t g
     | IsNil, [e1] ->
       let t1 = tc env e1 in
@@ -301,36 +344,34 @@ let rec tc (env: (var * tipe_scheme) list) (e: exp) =
               | Some t' -> t'
               | None -> 
                 let g = guess() in
-                unify t1 (List_t g); g
+                if unify t1 (List_t g) then g else type_error "Hd guess failed"
           )
         | _ -> type_error "Hd applied to non-list")
     | Tl, [e1] ->
         let t1 = tc env e1 in
         (match t1 with
-        | List_t _ -> t1
+        | List_t _ -> print_endline "tail of a list"; t1
         | Guess_t r -> 
           (
             match !r with
               | Some t' -> t'
               | None ->
                 let g = guess() in
-                unify t1 (List_t g); t1
+                if unify t1 (List_t g) then g else type_error "Tl guess failed"
           )
         | _ -> type_error "Tl applied to non-list")
     | _, _ -> type_error "Invalid primitive application")
   | Fn(x, e), _ -> 
-    print_string "In Fn\n";
     let g = guess() in
     Fn_t (g, tc ((x, Forall([], g))::env) e)
   | App(e1, e2), _ ->
-    print_string "In app"; print_tipe (tc env e1); print_tipe (tc env e2);
     let t1 = tc env e1 in
     let t2 = tc env e2 in
     let t = guess() in
     if (unify t1 (Fn_t(t2,t))) then t else type_error "App failed"
   | Let(x, e1, e2), _ ->
-    print_string "In Let\n";
     let s = generalize env (tc env e1) in 
+    (* print_endline "finish generalize"; *)
     tc ((x, s)::env) e2 
   | If (e1, e2, e3), _ ->
     let t1 = tc env e1 in

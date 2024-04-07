@@ -70,3 +70,40 @@ let rec tipe2string (t:tipe):string =
         tr := Some ty;
         tipe2string ty
      | Some t -> tipe2string t
+
+(* Convert primitive operations to string *)
+let prim2string prim = match prim with
+  | Int n -> string_of_int n
+  | Bool b -> string_of_bool b
+  | Unit -> "()"
+  | Plus -> "+"
+  | Minus -> "-"
+  | Times -> "*"
+  | Div -> "/"
+  | Eq -> "=="
+  | Lt -> "<"
+  | Pair -> "pair"
+  | Fst -> "fst"
+  | Snd -> "snd"
+  | Nil -> "[]"
+  | Cons -> "::"
+  | IsNil -> "is_nil"
+  | Hd -> "hd"
+  | Tl -> "tl"
+
+(* Convert expressions to string *)
+let rec exp2string ((e, _): exp) = match e with
+  | Var v -> v
+  | PrimApp (prim, exps) -> 
+      let prim_str = prim2string prim in
+      let args_str = String.concat ", " (List.map exp2string exps) in
+      Printf.sprintf "%s(%s)" prim_str args_str
+  | Fn (v, body) -> 
+      Printf.sprintf "fun %s -> %s" v (exp2string body)
+  | App (e1, e2) -> 
+      Printf.sprintf "(%s) (%s)" (exp2string e1) (exp2string e2)
+  | If (e1, e2, e3) -> 
+      Printf.sprintf "if %s then %s else %s" (exp2string e1) (exp2string e2) (exp2string e3)
+  | Let (v, e1, e2) -> 
+      Printf.sprintf "let %s = %s in %s" v (exp2string e1) (exp2string e2)
+

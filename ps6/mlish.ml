@@ -38,6 +38,7 @@ let _ =
   let (mode, prog) = parse_file() in
   match mode with
   | Typecheck ->
+     (* print_endline (exp2string prog); *)
      type_prog prog
   | Compile ->
      let prog' = compile_prog prog in

@@ -127,7 +127,8 @@ let rec guesses_of_type t = match t with
     | None -> 
       (* let new_var = freshvar () in
       r := Some (Tvar_t new_var);  *)
-      [r]
+      (* pay attention here, do not return r instead of t *)
+      [t]
     end
   | Fn_t (t1, t2) | Pair_t (t1, t2) -> List.append (guesses_of_type t1) (guesses_of_type t2)
   | List_t t' -> guesses_of_type t'
@@ -136,17 +137,33 @@ let rec guesses_of_type t = match t with
 let minus lst1 lst2 =
   List.filter (fun x -> not (List.mem x lst2)) lst1 
 
+let rec guess_address_lookup r subs : tvar option =
+  match subs with
+  | [] -> None
+  | (g, v)::tl -> (
+      match g with
+      | Guess_t (tr) -> if r == tr then Some v else guess_address_lookup r tl
+      | _ -> guess_address_lookup r tl
+  )
+
   (* subs is a list of pairs, the fst of the pairs in tipe t needs to be changed to the snds *)
 let rec subst_guess subs t = match t with
   | Tvar_t tv -> t
   | Guess_t r ->
     (
       match !r with
+      | Some a' -> (r := Some (subst_guess subs a'); t)
+      | None -> (
+          match guess_address_lookup r subs with
+          | Some v -> Tvar_t v
+          | None -> t
+      )
+      (* match !r with
       | Some t' -> subst_guess subs t'
       | None -> 
         let new_t = List.assoc r subs in
         r := Some  (Tvar_t new_t);
-        Tvar_t new_t
+        Tvar_t new_t *)
     )
   | Fn_t (t1, t2) -> Fn_t (subst_guess subs t1, subst_guess subs t2)
   | Pair_t (t1, t2) -> Pair_t (subst_guess subs t1, subst_guess subs t2)
@@ -157,25 +174,13 @@ let print_string_list l =
   List.iter (fun item -> print_endline item) l;
   print_string "\n";;
 
+let guesses_constrained_by_env (env_pair) =
+  match env_pair with (_, Forall (_, t)) -> guesses_of_type t
+
 let generalize env t =
-  (* print_endline "In generalize"; *)
-  (* print_tipe t; *)
   let t_gs = guesses_of_type t in
-  (* print_string "t_gs: ";
-  print_int (List.length t_gs); *)
-  (* print_string_list t_gs; *)
-  (* print_endline "End of t_gs"; *)
-
-  (* let env_bound_vars = (* Collect all bound type variables from the environment *)
-    List.fold_left (fun acc (_, scheme) ->
-      match scheme with
-      | Forall(vs, _) -> List.append acc vs
-      | _ -> acc
-    ) [] env in *)
-  
-  let env_bound_vars = [] in
-
-
+  let env_lists_vars = List.map guesses_constrained_by_env env in
+  let env_bound_vars = List.fold_left (fun acc gs -> List.append acc gs) [] env_lists_vars in
   (* let env_gs = List.fold_left (fun acc gs -> List.append acc gs) [] env_list_gs in *)
   let diff = minus t_gs env_bound_vars in
   (* print_string "diff: "; *)
@@ -234,9 +239,6 @@ let rec occurs (r: tipe option ref) (t:tipe) : bool =
 
 let rec unify (t1:tipe) (t2:tipe): bool =
   match t1, t2 with
-(*    | Guess_t ((ref None) as r1), Guess_t ((ref None) as r2) -> r1 == r2
-  | Guess_t (Some a'), _ -> unify a' t2
-  | Guess_t (None as r), t2 -> (if occurs r t2 then type_error "LOOPED TYPE" else (r := Some t2; true))*)
   | Guess_t (r1), _ -> (
       match !r1 with
       | Some a' -> unify a' t2

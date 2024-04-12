@@ -1,0 +1,1 @@
+1. a variable is liveif it holds a value that may be needed in the futute. 

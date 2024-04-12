@@ -1,9 +1,65 @@
 open Cfg_ast
 exception Implement_Me
 exception FatalError
+exception BlockError 
 
 
 type igraph_node = RegNode of Mips.reg | VarNode of var
+
+type flow_graph_node = Block of block
+
+module FGraphNode =
+  struct
+    type t = flow_graph_node
+    let compare = compare
+  end
+
+module FlowNodeSet = Set.Make(FGraphNode)
+
+module FGraph = Graph.DirectedGraph(FGraphNode)
+
+type flow_graph = FGraph.graph
+
+module BlockMap = Map.Make(FGraphNode)
+
+let def_map : igraph_node list BlockMap.t = BlockMap.empty
+
+let use_map : igraph_node list BlockMap.t = BlockMap.empty
+
+let find_block_with_label (f: func) (label: label) : flow_graph_node =
+  let rec find_block_with_label' (f: func) (label: label) : block =
+    match f with
+    | [] -> raise FatalError
+    | head_block :: t -> 
+      (
+        match head_block with
+
+        | (Label l) :: _ when l = label -> head_block
+        | _ :: _ -> find_block_with_label' t label
+        | [] -> raise FatalError
+      )
+  in
+  Block (find_block_with_label' f label)
+
+
+let make_graph (f: func) : flow_graph = 
+  let graph = FGraph.empty in
+  let graph_with_nodes = List.fold_left (fun acc_graph block -> FGraph.addNode (Block block) acc_graph) graph f in
+  
+  let add_edges acc_graph block = 
+    match List.rev block with 
+    | (Jump label) :: _ -> 
+      let target_block_node = find_block_with_label f label in
+      FGraph.addEdge (Block block) target_block_node acc_graph
+    | (If (_, _, _, label_true, label_false)) :: _ -> 
+      let true_block_node = find_block_with_label f label_true in
+      let false_block_node = find_block_with_label f label_false in
+      let graph_with_true_edge = FGraph.addEdge (Block block) true_block_node acc_graph in
+      FGraph.addEdge (Block block) false_block_node graph_with_true_edge
+    | Return :: _ -> acc_graph
+    | _ -> raise BlockError
+  in
+  List.fold_left add_edges graph_with_nodes f
 
 let string_of_node (n: igraph_node) : string =
   match n with

@@ -1,0 +1,9 @@
+main () {
+  let x = 12;
+  let y = 15; {
+  let z = x + y; {
+  let q = 13; 
+  return z;
+  }
+  }
+}

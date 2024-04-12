@@ -1,0 +1,5 @@
+main () {
+  let x = 12;
+  let y = 15;
+  return x+y;
+}

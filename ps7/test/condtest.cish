@@ -1,0 +1,14 @@
+f(a,b){
+  let x = 0; {
+  if(a>b){
+    x=1;
+  }
+  else{
+    x=2;
+  }
+  return x;
+  }
+}
+main(){
+  return 0;
+}

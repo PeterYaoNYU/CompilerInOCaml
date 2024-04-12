@@ -6,6 +6,31 @@ exception BlockError
 
 type igraph_node = RegNode of Mips.reg | VarNode of var
 
+(* These are the registers that must be generated / killed as part of
+   liveness analysis for call instructions to reflect MIPS calling
+   conventions *)
+
+let call_gen_list = ["$4";"$5";"$6";"$7"]
+let call_kill_list = ["$1";"$2";"$3";"$4";"$5";"$6";"$7";"$8";"$9";"$10";
+                      "$11";"$12";"$13";"$14";"$15";"$24";"$25";"$31"]
+
+let string2reg (s:string) :Mips.reg =
+  match s with
+  | "$0" -> R0   | "$1" -> R1   | "$2" -> R2   | "$3" -> R3
+  | "$4" -> R4   | "$5" -> R5   | "$6" -> R6   | "$7" -> R7
+  | "$8" -> R8   | "$9" -> R9   | "$10" -> R10 | "$11" -> R11
+  | "$12" -> R12 | "$13" -> R13 | "$14" -> R14 | "$15" -> R15
+  | "$16" -> R16 | "$17" -> R17 | "$18" -> R18 | "$19" -> R19
+  | "$20" -> R20 | "$21" -> R21 | "$22" -> R22 | "$23" -> R23
+  | "$24" -> R24 | "$25" -> R25 | "$26" -> R26 | "$27" -> R27
+  | "$28" -> R28 | "$29" -> R29 | "$30" -> R30 | "$31" -> R31
+  | _ -> failwith ("Unknown MIPS register: " ^ s)
+
+let call_gen_list_reg : Mips.reg list = List.map string2reg call_gen_list
+let call_kill_list_reg : Mips.reg list = List.map string2reg call_kill_list
+
+(* Below are helpers for making the flow graph *)
+
 type flow_graph_node = Block of block
 
 module FGraphNode =
@@ -70,7 +95,7 @@ let update_maps block (def_map, use_map) =
      | Load (Var v, _, _) -> (VarNode v :: def, use)
      | Load (_, Var v, _) -> (def, VarNode v :: use)
      | Store (_, _, Var v) -> (def, VarNode v :: use)
-     | Call (_) -> (def, use)
+     | Call (_) -> ((List.append (List.map (fun x -> RegNode x) call_kill_list_reg) def), (List.append (List.map (fun x -> RegNode x) call_gen_list_reg) use))
      | _ -> (def, use)
   in
   let def, use = List.fold_left (fun (def_acc, use_acc) inst -> process_instruction def_acc use_acc inst) ([], []) block in
@@ -101,13 +126,7 @@ module IGraphNode =
   end
 
 module NodeSet = Set.Make(IGraphNode)                                                   
-(* These are the registers that must be generated / killed as part of
-   liveness analysis for call instructions to reflect MIPS calling
-   conventions *)
 
-let call_gen_list = ["$4";"$5";"$6";"$7"]
-let call_kill_list = ["$1";"$2";"$3";"$4";"$5";"$6";"$7";"$8";"$9";"$10";
-                      "$11";"$12";"$13";"$14";"$15";"$24";"$25";"$31"]
 
 (* Undirected graphs where nodes are identified by igraph_node type above. Look at
    graph.ml for the interface description.  *)

@@ -21,10 +21,10 @@ module FGraph = Graph.DirectedGraph(FGraphNode)
 type flow_graph = FGraph.graph
 
 module BlockMap = Map.Make(FGraphNode)
-
+(* 
 let def_map : igraph_node list BlockMap.t = BlockMap.empty
 
-let use_map : igraph_node list BlockMap.t = BlockMap.empty
+let use_map : igraph_node list BlockMap.t = BlockMap.empty *)
 
 let find_block_with_label (f: func) (label: label) : flow_graph_node =
   let rec find_block_with_label' (f: func) (label: label) : block =
@@ -60,6 +60,33 @@ let make_graph (f: func) : flow_graph =
     | _ -> raise BlockError
   in
   List.fold_left add_edges graph_with_nodes f
+
+let update_maps block (def_map, use_map) = 
+  let process_instruction def use inst = 
+    match inst with 
+     | Move (Var v, _) | Arith (Var v, _, _, _) -> (VarNode v::def, use)
+     | Move (_, Var v) | Arith (_, Var v, _, _) | Arith (_, _, _, Var v) -> (def, VarNode v::use)
+     | If (Var v, _, Var w, _, _) -> (def, VarNode v :: VarNode w :: use)
+     | Load (Var v, _, _) -> (VarNode v :: def, use)
+     | Load (_, Var v, _) -> (def, VarNode v :: use)
+     | Store (_, _, Var v) -> (def, VarNode v :: use)
+     | Call (_) -> (def, use)
+     | _ -> (def, use)
+  in
+  let def, use = List.fold_left (fun (def_acc, use_acc) inst -> process_instruction def_acc use_acc inst) ([], []) block in
+  let block_node = Block block in
+  (BlockMap.add block_node def def_map, BlockMap.add block_node use use_map)
+
+let build_maps (f: func) = List.fold_left (fun maps block -> update_maps block maps) (BlockMap.empty, BlockMap.empty) f
+
+  
+
+    
+  
+
+
+
+(* Above are helpers for making the flow graph *)
 
 let string_of_node (n: igraph_node) : string =
   match n with

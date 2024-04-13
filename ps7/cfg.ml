@@ -117,11 +117,19 @@ let update_maps block (def_map, use_map) =
   let process_instruction def use inst = 
     match inst with 
      | Move (Var v, _) | Arith (Var v, _, _, _) -> (NodeSet.add (VarNode v) def, use)
+     | Move (Reg r, _) | Arith (Reg r, _, _, _) -> (NodeSet.add (RegNode r) def, use)
      | Move (_, Var v) | Arith (_, Var v, _, _) | Arith (_, _, _, Var v) -> (def, NodeSet.add (VarNode v) use)
+     | Move (_, Reg r) | Arith (_, Reg r, _, _) | Arith (_, _, _, Reg r) -> (def, NodeSet.add (RegNode r) use)
      | If (Var v, _, Var w, _, _) -> (def, NodeSet.add (VarNode v) (NodeSet.add (VarNode w) use))
+     | If (Var v, _, Reg r, _, _) -> (def, NodeSet.add (VarNode v) (NodeSet.add (RegNode r) use))
+     | If (Reg r, _, Var v, _, _) -> (def, NodeSet.add (RegNode r) (NodeSet.add (VarNode v) use))
+     | If (Reg r, _, Reg s, _, _) -> (def, NodeSet.add (RegNode r) (NodeSet.add (RegNode s) use))
      | Load (Var v, _, _) -> (NodeSet.add (VarNode v) def, use)
+     | Load (Reg r, _, _) -> (NodeSet.add (RegNode r) def, use)
      | Load (_, Var v, _) -> (def, NodeSet.add (VarNode v) use)
+     | Load (_, Reg r, _) -> (def, NodeSet.add (RegNode r) use)
      | Store (_, _, Var v) -> (def, NodeSet.add (VarNode v) use)
+     | Store (_, _, Reg r) -> (def, NodeSet.add (RegNode r) use)
      | Call (_) -> (NodeSet.union (NodeSet.of_list (List.map (fun x -> RegNode x) call_kill_list_reg)) def,
                     NodeSet.union (NodeSet.of_list (List.map (fun x -> RegNode x) call_gen_list_reg)) use)
      | _ -> (def, use)
@@ -131,6 +139,27 @@ let update_maps block (def_map, use_map) =
   (BlockMap.add block_node def def_map, BlockMap.add block_node use use_map)
 
 let build_maps (f: func) = List.fold_left (fun maps block -> update_maps block maps) (BlockMap.empty, BlockMap.empty) f
+
+let string_of_node node = 
+  match node with 
+  | RegNode r -> Mips.reg2string r
+  | VarNode v -> v
+
+let print_map map = 
+  BlockMap.iter (fun block_node set -> 
+    match block_node with
+    | Block block -> 
+      let block_string = "Block Node: " ^ (block2string block) in
+      let nodes_string = 
+        NodeSet.fold (fun node acc ->
+            acc ^ (string_of_node node) ^ ", "
+          ) set ""
+      in
+      Printf.printf "%s: %s\n" block_string nodes_string
+    | _ -> raise FatalError
+  ) map
+
+
 
 (* Above are helpers for making the flow graph *)
 
@@ -209,6 +238,12 @@ let add_edges_to_igraph (live_out_sets: NodeSet.t BlockMap.t): interfere_graph =
 let build_interfere_graph (f : func) = 
     let flow_graph = make_graph f in
     let def_use_map = build_maps f in
+    print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
+    print_endline "Def Map:";
+    print_map (fst def_use_map);
+    print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
+    print_endline "Use Map:";
+    print_map (snd def_use_map);
     let initial_live_in_sets = BlockMap.empty in
     let initial_live_out_sets = BlockMap.empty in
     let final_live_in_sets, final_live_out_sets = analyze_liveness flow_graph def_use_map initial_live_in_sets initial_live_out_sets in

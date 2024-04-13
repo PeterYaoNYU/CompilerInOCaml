@@ -78,6 +78,36 @@ let def_map : igraph_node list BlockMap.t = BlockMap.empty
 
 let use_map : igraph_node list BlockMap.t = BlockMap.empty *)
 
+(* debugging functions *)
+
+let string_of_node node = 
+  match node with 
+  | RegNode r -> Mips.reg2string r
+  | VarNode v -> v
+
+let print_map map = 
+  BlockMap.iter (fun block_node set -> 
+    match block_node with
+    | Block block -> 
+      let block_string = "Block Node: " ^ (block2string block) in
+      let nodes_string = 
+        NodeSet.fold (fun node acc ->
+            acc ^ (string_of_node node) ^ ", "
+          ) set ""
+      in
+      Printf.printf "%s: %s\n" block_string nodes_string
+    | _ -> raise FatalError
+  ) map
+
+let print_set set = 
+  let node_string = NodeSet.fold (fun node acc -> acc ^ (string_of_node node) ^ ", ") set "" in
+  Printf.printf "%s\n>>>>>>>>>>>>>>>>>>>>>>>\n" node_string
+
+let print_blocknode block_node = 
+  match block_node with 
+  | Block block -> print_endline (block2string block)
+  | _ -> raise FatalError
+
 let find_block_with_label (f: func) (label: label) : flow_graph_node =
   let rec find_block_with_label' (f: func) (label: label) : block =
     match f with
@@ -139,10 +169,12 @@ let process_instruction (def, use) inst =
     let (def, use)= match src with 
       | Var v -> (def, add_node_to_use use (VarNode v))
       | Reg r -> (def, add_node_to_use use (RegNode r))
+      | _ -> (def, use)
     in
     let (def, use) = match src2 with 
       | Var v -> (def, add_node_to_use use (VarNode v))
       | Reg r -> (def, add_node_to_use use (RegNode r))
+      | _ -> (def, use)
     in
     (def, use)
   | If (src1, _, src2, _, _) -> 
@@ -217,24 +249,6 @@ let update_maps block (def_map, use_map) =
 
 let build_maps (f: func) = List.fold_left (fun maps block -> update_maps block maps) (BlockMap.empty, BlockMap.empty) f 
 
-let string_of_node node = 
-  match node with 
-  | RegNode r -> Mips.reg2string r
-  | VarNode v -> v
-
-let print_map map = 
-  BlockMap.iter (fun block_node set -> 
-    match block_node with
-    | Block block -> 
-      let block_string = "Block Node: " ^ (block2string block) in
-      let nodes_string = 
-        NodeSet.fold (fun node acc ->
-            acc ^ (string_of_node node) ^ ", "
-          ) set ""
-      in
-      Printf.printf "%s: %s\n" block_string nodes_string
-    | _ -> raise FatalError
-  ) map
 
 
 
@@ -284,6 +298,9 @@ let rec analyze_liveness flow_graph def_use_map live_in_sets live_out_sets =
       let kill_set = BlockMap.find block_node (fst def_use_map) in 
       let live_out = FlowNodeSet.fold(fun succ live_out_acc -> 
         let succ_live_in = try BlockMap.find succ acc_live_in_sets with Not_found -> NodeSet.empty in
+        print_endline ">>>>>>>>>>>>>>>>>>>>>>>Succ live in";
+        print_set succ_live_in;
+        (* print_blocknode succ; *)
         NodeSet.union succ_live_in live_out_acc
       ) (FGraph.succ block_node flow_graph) NodeSet.empty in 
 
@@ -321,8 +338,16 @@ let build_interfere_graph (f : func) =
     print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
     print_endline "Use Map:";
     print_map (snd def_use_map);
+    print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
+    print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
     let initial_live_in_sets = BlockMap.empty in
     let initial_live_out_sets = BlockMap.empty in
-    let final_live_in_sets, final_live_out_sets = analyze_liveness flow_graph def_use_map initial_live_in_sets initial_live_out_sets in
+    let final_live_in_sets, final_live_out_sets = analyze_liveness flow_graph def_use_map (snd def_use_map) initial_live_out_sets in
+    print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
+    print_endline "Live In Sets:";
+    print_map final_live_in_sets;
+    print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
+    print_endline "Live Out Sets:";
+    print_map final_live_out_sets;
     let final_interfere_graph = add_edges_to_igraph final_live_out_sets in
     final_interfere_graph

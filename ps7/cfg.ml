@@ -113,7 +113,83 @@ let make_graph (f: func) : flow_graph =
   in
   List.fold_left add_edges graph_with_nodes f
 
-let update_maps block (def_map, use_map) = 
+let add_node_to_def def node = NodeSet.add node def
+let add_node_to_use use node = NodeSet.add node use
+
+let process_instruction (def, use) inst = 
+  match inst with 
+  | Move (dest, src) ->
+    let (def, use) = (
+      match dest with 
+      | Var v -> (add_node_to_def def (VarNode v), use)
+      | Reg r -> (add_node_to_def def (RegNode r), use)
+    ) in
+    let (def, use) = (
+      match src with 
+      | Var v -> (def, add_node_to_use use (VarNode v))
+      | Reg r -> (def, add_node_to_use use (RegNode r))
+      | _ -> (def, use)
+    ) in
+    (def, use)
+  | Arith (dest, src, _, src2) -> 
+    let (def, use) = match dest with 
+      | Var v -> (add_node_to_def def (VarNode v), use)
+      | Reg r -> (add_node_to_def def (RegNode r), use)
+    in
+    let (def, use)= match src with 
+      | Var v -> (def, add_node_to_use use (VarNode v))
+      | Reg r -> (def, add_node_to_use use (RegNode r))
+    in
+    let (def, use) = match src2 with 
+      | Var v -> (def, add_node_to_use use (VarNode v))
+      | Reg r -> (def, add_node_to_use use (RegNode r))
+    in
+    (def, use)
+  | If (src1, _, src2, _, _) -> 
+    let (def, use) = (
+      match src1 with 
+      | Var v -> (def, add_node_to_use use (VarNode v))
+      | Reg r -> (def, add_node_to_use use (RegNode r))
+    ) in
+    let (def, use) = (
+      match src2 with 
+      | Var v -> (def, add_node_to_use use (VarNode v))
+      | Reg r -> (def, add_node_to_use use (RegNode r))
+    ) in
+    (def, use)
+  | Load (dest, src, _) -> 
+    let (def, use) = (
+      match dest with 
+      | Var v -> (add_node_to_def def (VarNode v), use)
+      | Reg r -> (add_node_to_def def (RegNode r), use)
+    ) in
+    let (def, use) = (
+      match src with 
+      | Var v -> (def, add_node_to_use use (VarNode v))
+      | Reg r -> (def, add_node_to_use use (RegNode r))
+    ) in
+    (def, use)
+  | Store (_, _, src) -> 
+    let (def, use) = (
+      match src with 
+      | Var v -> (def, add_node_to_use use (VarNode v))
+      | Reg r -> (def, add_node_to_use use (RegNode r))
+    ) in
+    (def, use)
+  | Call _ -> 
+    let def = (NodeSet.union (NodeSet.of_list (List.map (fun x -> RegNode x) call_kill_list_reg)) def) in
+    let use = (NodeSet.union (NodeSet.of_list (List.map (fun x -> RegNode x) call_gen_list_reg)) use) in
+    (def, use)
+  | _ -> (def, use)
+
+let update_maps block (def_map, use_map) =
+  let def, use = List.fold_left process_instruction (NodeSet.empty, NodeSet.empty) block in
+  let block_node = Block block in
+  (BlockMap.add block_node def def_map, BlockMap.add block_node use use_map)
+
+(* Bug: the pattern matching does not fall through *)
+
+(* let update_maps block (def_map, use_map) = 
   let process_instruction def use inst = 
     match inst with 
      | Move (Var v, _) | Arith (Var v, _, _, _) -> (NodeSet.add (VarNode v) def, use)
@@ -137,8 +213,9 @@ let update_maps block (def_map, use_map) =
   let def, use = List.fold_left (fun (def_acc, use_acc) inst -> process_instruction def_acc use_acc inst) (NodeSet.empty, NodeSet.empty) block in
   let block_node = Block block in
   (BlockMap.add block_node def def_map, BlockMap.add block_node use use_map)
+*)
 
-let build_maps (f: func) = List.fold_left (fun maps block -> update_maps block maps) (BlockMap.empty, BlockMap.empty) f
+let build_maps (f: func) = List.fold_left (fun maps block -> update_maps block maps) (BlockMap.empty, BlockMap.empty) f 
 
 let string_of_node node = 
   match node with 

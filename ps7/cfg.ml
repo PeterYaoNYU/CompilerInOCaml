@@ -5,6 +5,33 @@ exception BlockError
 
 
 type igraph_node = RegNode of Mips.reg | VarNode of var
+let string_of_node (n: igraph_node) : string =
+  match n with
+  | RegNode r -> Mips.reg2string r
+  | VarNode v -> v
+;;
+
+module IGraphNode =
+  struct
+    type t = igraph_node
+    let compare = compare
+  end
+
+module NodeSet = Set.Make(IGraphNode)                                                   
+
+
+(* Undirected graphs where nodes are identified by igraph_node type above. Look at
+   graph.ml for the interface description.  *)
+
+module IUGraph = Graph.UndirectedGraph(IGraphNode)
+
+(* this is a wrapper to addEdge that prevents adding self edges.
+   to do all sorts of other complicated stuff for eg coloring *)
+let specialAddEdge u v g =
+  if (u = v) then
+    g
+  else
+    IUGraph.addEdge u v g
 
 (* These are the registers that must be generated / killed as part of
    liveness analysis for call instructions to reflect MIPS calling
@@ -89,57 +116,25 @@ let make_graph (f: func) : flow_graph =
 let update_maps block (def_map, use_map) = 
   let process_instruction def use inst = 
     match inst with 
-     | Move (Var v, _) | Arith (Var v, _, _, _) -> (VarNode v::def, use)
-     | Move (_, Var v) | Arith (_, Var v, _, _) | Arith (_, _, _, Var v) -> (def, VarNode v::use)
-     | If (Var v, _, Var w, _, _) -> (def, VarNode v :: VarNode w :: use)
-     | Load (Var v, _, _) -> (VarNode v :: def, use)
-     | Load (_, Var v, _) -> (def, VarNode v :: use)
-     | Store (_, _, Var v) -> (def, VarNode v :: use)
-     | Call (_) -> ((List.append (List.map (fun x -> RegNode x) call_kill_list_reg) def), (List.append (List.map (fun x -> RegNode x) call_gen_list_reg) use))
+     | Move (Var v, _) | Arith (Var v, _, _, _) -> (NodeSet.add (VarNode v) def, use)
+     | Move (_, Var v) | Arith (_, Var v, _, _) | Arith (_, _, _, Var v) -> (def, NodeSet.add (VarNode v) use)
+     | If (Var v, _, Var w, _, _) -> (def, NodeSet.add (VarNode v) (NodeSet.add (VarNode w) use))
+     | Load (Var v, _, _) -> (NodeSet.add (VarNode v) def, use)
+     | Load (_, Var v, _) -> (def, NodeSet.add (VarNode v) use)
+     | Store (_, _, Var v) -> (def, NodeSet.add (VarNode v) use)
+     | Call (_) -> (NodeSet.union (NodeSet.of_list (List.map (fun x -> RegNode x) call_kill_list_reg)) def,
+                    NodeSet.union (NodeSet.of_list (List.map (fun x -> RegNode x) call_gen_list_reg)) use)
      | _ -> (def, use)
   in
-  let def, use = List.fold_left (fun (def_acc, use_acc) inst -> process_instruction def_acc use_acc inst) ([], []) block in
+  let def, use = List.fold_left (fun (def_acc, use_acc) inst -> process_instruction def_acc use_acc inst) (NodeSet.empty, NodeSet.empty) block in
   let block_node = Block block in
   (BlockMap.add block_node def def_map, BlockMap.add block_node use use_map)
 
 let build_maps (f: func) = List.fold_left (fun maps block -> update_maps block maps) (BlockMap.empty, BlockMap.empty) f
 
-  
-
-    
-  
-
-
-
 (* Above are helpers for making the flow graph *)
 
-let string_of_node (n: igraph_node) : string =
-  match n with
-  | RegNode r -> Mips.reg2string r
-  | VarNode v -> v
-;;
 
-module IGraphNode =
-  struct
-    type t = igraph_node
-    let compare = compare
-  end
-
-module NodeSet = Set.Make(IGraphNode)                                                   
-
-
-(* Undirected graphs where nodes are identified by igraph_node type above. Look at
-   graph.ml for the interface description.  *)
-
-module IUGraph = Graph.UndirectedGraph(IGraphNode)
-
-(* this is a wrapper to addEdge that prevents adding self edges.
-   to do all sorts of other complicated stuff for eg coloring *)
-let specialAddEdge u v g =
-  if (u = v) then
-    g
-  else
-    IUGraph.addEdge u v g
 
 (* An interference graph is an SUGraph where a node is temp variable
    or a register (to be able to handle pre-colored nodes)
@@ -167,5 +162,45 @@ let string_of_igraph (g: interfere_graph) : string =
  * interference graph for that function.  This will require that
  * you build a dataflow analysis for calculating what set of variables
  * are live-in and live-out for each program point. *)
-let build_interfere_graph (f : func) : interfere_graph = 
-    raise Implement_Me
+
+(* my bad, it is inefficient to use ref as global variables for sets that grow larger *)
+(* let live_in_sets : igraph_node list BlockMap.t = BlockMap.empty
+let live_out_sets : iigraph_node list BlockMap.t = BlockMap.empty *)
+
+(* let build_interfere_graph (f : func) : interfere_graph =  *)
+
+let rec analyze_liveness flow_graph def_use_map live_in_sets live_out_sets =
+  let changes = ref false in 
+
+  let new_live_in_sets, new_live_out_sets = 
+    FlowNodeSet.fold (fun block_node (acc_live_in_sets, acc_live_out_sets) -> 
+      let gen_set = BlockMap.find block_node (snd def_use_map) in 
+      let kill_set = BlockMap.find block_node (fst def_use_map) in 
+      let live_out = FlowNodeSet.fold(fun succ live_out_acc -> 
+        let succ_live_in = try BlockMap.find succ acc_live_in_sets with Not_found -> NodeSet.empty in
+        NodeSet.union succ_live_in live_out_acc
+      ) (FGraph.succ block_node flow_graph) NodeSet.empty in 
+
+      let live_in = NodeSet.union gen_set (NodeSet.diff live_out kill_set) in
+      let prev_live_in = try BlockMap.find block_node acc_live_in_sets with Not_found -> NodeSet.empty in
+      let prev_live_out = try BlockMap.find block_node acc_live_out_sets with Not_found -> NodeSet.empty in
+      if (NodeSet.equal live_out prev_live_out) then 
+        (acc_live_in_sets, acc_live_out_sets)
+      else (
+        changes := true;
+        let updated_live_in_sets = BlockMap.add block_node live_in acc_live_in_sets in 
+        let updated_live_out_sets = BlockMap.add block_node live_out acc_live_out_sets in
+        (updated_live_in_sets, updated_live_out_sets)
+      )
+    ) (FGraph.nodes flow_graph) (live_in_sets, live_out_sets) 
+  in if !changes then analyze_liveness flow_graph def_use_map new_live_in_sets new_live_out_sets else (new_live_in_sets, new_live_out_sets)
+
+
+
+let build_interfere_graph (f : func) = 
+    let flow_graph = make_graph f in
+    let def_use_map = build_maps f in
+    let initial_live_in_sets = BlockMap.empty in
+    let initial_live_out_sets = BlockMap.empty in
+    let final_live_in_sets, final_live_out_sets = analyze_liveness flow_graph def_use_map initial_live_in_sets initial_live_out_sets in
+    IUGraph.empty

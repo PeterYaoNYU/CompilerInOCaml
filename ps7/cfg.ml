@@ -195,7 +195,16 @@ let rec analyze_liveness flow_graph def_use_map live_in_sets live_out_sets =
     ) (FGraph.nodes flow_graph) (live_in_sets, live_out_sets) 
   in if !changes then analyze_liveness flow_graph def_use_map new_live_in_sets new_live_out_sets else (new_live_in_sets, new_live_out_sets)
 
-
+let add_edges_to_igraph (live_out_sets: NodeSet.t BlockMap.t): interfere_graph =
+  let interfere_graph = IUGraph.empty in
+  let add_interferences block_live_out graph = 
+    NodeSet.fold (fun node acc_graph -> 
+      NodeSet.fold (fun other_node acc_inner_graph ->
+        specialAddEdge node other_node acc_inner_graph
+      ) block_live_out acc_graph
+    ) block_live_out graph
+  in
+  BlockMap.fold (fun _ block_live_out acc_graph -> add_interferences block_live_out acc_graph) live_out_sets interfere_graph
 
 let build_interfere_graph (f : func) = 
     let flow_graph = make_graph f in
@@ -203,4 +212,5 @@ let build_interfere_graph (f : func) =
     let initial_live_in_sets = BlockMap.empty in
     let initial_live_out_sets = BlockMap.empty in
     let final_live_in_sets, final_live_out_sets = analyze_liveness flow_graph def_use_map initial_live_in_sets initial_live_out_sets in
-    IUGraph.empty
+    let final_interfere_graph = add_edges_to_igraph final_live_out_sets in
+    final_interfere_graph

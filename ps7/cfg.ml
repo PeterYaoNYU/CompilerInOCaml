@@ -167,6 +167,7 @@ let process_instruction (def, use) inst =
       match dest with 
       | Var v -> (add_node_to_def def (VarNode v), use)
       | Reg r -> (add_node_to_def def (RegNode r), use)
+      | _ -> (def, use)
     ) in
     let (def, use) = (
       match src with 
@@ -197,6 +198,7 @@ let process_instruction (def, use) inst =
     let (def, use) = match dest with 
       | Var v -> (add_node_to_def def (VarNode v), use)
       | Reg r -> (add_node_to_def def (RegNode r), use)
+      | _ -> (def, use)
     in
     let (def, use)= match src with 
       | Var v -> (def, add_node_to_use use (VarNode v))
@@ -214,11 +216,13 @@ let process_instruction (def, use) inst =
       match src1 with 
       | Var v -> (def, add_node_to_use use (VarNode v))
       | Reg r -> (def, add_node_to_use use (RegNode r))
+      | _ -> (def, use)
     ) in
     let (def, use) = (
       match src2 with 
       | Var v -> (def, add_node_to_use use (VarNode v))
       | Reg r -> (def, add_node_to_use use (RegNode r))
+      | _ -> (def, use)
     ) in
     (def, use)
   | Load (dest, src, _) -> 
@@ -238,11 +242,13 @@ let process_instruction (def, use) inst =
       match dest with 
       | Var v -> (add_node_to_def def (VarNode v), use)
       | Reg r -> (add_node_to_def def (RegNode r), use)
+      | _ -> (def, use)
     ) in
     let (def, use) = (
       match src with 
       | Var v -> (def, add_node_to_use use (VarNode v))
       | Reg r -> (def, add_node_to_use use (RegNode r))
+      | _ -> (def, use)
     ) in
     (def, use)
   | Store (_, _, src) -> 
@@ -256,12 +262,18 @@ let process_instruction (def, use) inst =
       match src with 
       | Var v -> (def, add_node_to_use use (VarNode v))
       | Reg r -> (def, add_node_to_use use (RegNode r))
+      | _ -> (def, use)
     ) in
     (def, use)
     (* Pending, do not know precisely how to handle the call case *)
   | Call _ -> 
     let def = (NodeSet.union (NodeSet.of_list (List.map (fun x -> RegNode x) call_kill_list_reg)) def) in
     let use = (NodeSet.union (NodeSet.of_list (List.map (fun x -> RegNode x) call_gen_list_reg)) use) in
+    (def, use)
+  | Return -> 
+    let def = (if (NodeSet.mem (RegNode R2) def) then NodeSet.remove (RegNode R2) def else def)
+    in
+    let use = NodeSet.add (RegNode R2) use in
     (def, use)
   | _ -> (def, use)
 
@@ -440,11 +452,13 @@ let instruction_def_use live_set inst =
       match src1 with 
       | Var v -> add_node_to_use live_set (VarNode v)
       | Reg r -> add_node_to_use live_set (RegNode r)
+      | _ -> live_set
     ) in
     let live_set = (
       match src2 with 
       | Var v -> add_node_to_use live_set (VarNode v)
       | Reg r -> add_node_to_use live_set (RegNode r)
+      | _ -> live_set
     ) in
     live_set
   | Load (dest, src, _) -> 
@@ -458,6 +472,7 @@ let instruction_def_use live_set inst =
       match src with 
       | Var v -> add_node_to_use live_set (VarNode v)
       | Reg r -> add_node_to_use live_set (RegNode r)
+      | _ -> live_set
     ) in
     live_set
   | Store (_, _, src) -> 
@@ -465,6 +480,7 @@ let instruction_def_use live_set inst =
       match src with 
       | Var v -> add_node_to_use live_set (VarNode v)
       | Reg r -> add_node_to_use live_set (RegNode r)
+      | _ -> live_set
     ) in
     live_set
     (* Pending, do not know precisely how to handle the call case *)
@@ -507,21 +523,21 @@ let build_interference_graph (blocks: block list) (live_out_map: NodeSet.t Block
 let build_interfere_graph (f : func) = 
     let flow_graph = make_graph f in
     let def_use_map = build_maps f in
-    print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
+    (* print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
     print_endline "Def Map:";
     print_map (fst def_use_map);
     print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
     print_endline "Use Map:";
     print_map (snd def_use_map);
     print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
-    print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
+    print_endline ">>>>>>>>>>>>>>>>>>>>>>>"; *)
     let initial_live_out_sets = BlockMap.empty in
     let final_live_in_sets, final_live_out_sets = analyze_liveness flow_graph def_use_map (snd def_use_map) initial_live_out_sets in
-    print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
+    (* print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
     print_endline "Live In Sets:";
     print_map final_live_in_sets;
     print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
-    print_endline "Live Out Sets:";
+    print_endline "Live Out Sets:"; *)
     print_map final_live_out_sets;
     let final_interfere_graph = build_interference_graph f final_live_out_sets in
     final_interfere_graph

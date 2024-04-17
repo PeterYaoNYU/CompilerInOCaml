@@ -400,6 +400,110 @@ let add_edges_to_igraph (live_in_sets: NodeSet.t BlockMap.t) (live_out_sets: Nod
     add_interferences combined_live_set acc_graph
   ) combined_sets interfere_graph
 
+let instruction_def_use live_set inst = 
+  match inst with 
+  | Move (dest, src) ->
+    let live_set = (
+      match dest with 
+      | Var v -> (if (NodeSet.mem (VarNode v) live_set) then NodeSet.remove (VarNode v) live_set else live_set)
+      | Reg r -> (if (NodeSet.mem (RegNode r) live_set) then NodeSet.remove (RegNode r) live_set else live_set)
+      | _ -> live_set
+    )
+    in
+    let live_set = (
+      match src with 
+      | Var v -> add_node_to_use live_set (VarNode v)
+      | Reg r -> add_node_to_use live_set (RegNode r)
+      | _ -> live_set
+    ) in
+    live_set
+  | Arith (dest, src, _, src2) -> 
+    let live_set = (
+      match dest with 
+      | Var v -> (if (NodeSet.mem (VarNode v) live_set) then NodeSet.remove (VarNode v) live_set else live_set)
+      | Reg r -> (if (NodeSet.mem (RegNode r) live_set) then NodeSet.remove (RegNode r) live_set else live_set)
+      | _ -> live_set
+    ) in
+    let live_set= match src with 
+      | Var v -> add_node_to_use live_set (VarNode v)
+      | Reg r -> add_node_to_use live_set (RegNode r)
+      | _ -> live_set
+    in
+    let live_set = match src2 with 
+      | Var v -> add_node_to_use live_set (VarNode v)
+      | Reg r -> add_node_to_use live_set (RegNode r)
+      | _ -> live_set
+    in
+    live_set
+  | If (src1, _, src2, _, _) -> 
+    let live_set = (
+      match src1 with 
+      | Var v -> add_node_to_use live_set (VarNode v)
+      | Reg r -> add_node_to_use live_set (RegNode r)
+    ) in
+    let live_set = (
+      match src2 with 
+      | Var v -> add_node_to_use live_set (VarNode v)
+      | Reg r -> add_node_to_use live_set (RegNode r)
+    ) in
+    live_set
+  | Load (dest, src, _) -> 
+    let live_set = (
+      match dest with 
+      | Var v -> (if (NodeSet.mem (VarNode v) live_set) then NodeSet.remove (VarNode v) live_set else live_set)
+      | Reg r -> (if (NodeSet.mem (RegNode r) live_set) then NodeSet.remove (RegNode r) live_set else live_set)
+      | _ -> live_set
+    ) in
+    let live_set = (
+      match src with 
+      | Var v -> add_node_to_use live_set (VarNode v)
+      | Reg r -> add_node_to_use live_set (RegNode r)
+    ) in
+    live_set
+  | Store (_, _, src) -> 
+    let live_set = (
+      match src with 
+      | Var v -> add_node_to_use live_set (VarNode v)
+      | Reg r -> add_node_to_use live_set (RegNode r)
+    ) in
+    live_set
+    (* Pending, do not know precisely how to handle the call case *)
+  | Call _ -> 
+    let live_set = (NodeSet.union (NodeSet.of_list (List.map (fun x -> RegNode x) call_kill_list_reg)) live_set) in
+    let live_set = (NodeSet.union (NodeSet.of_list (List.map (fun x -> RegNode x) call_gen_list_reg)) live_set) in
+    live_set
+  | _ -> live_set
+
+let build_interference_graph (blocks: block list) (live_out_map: NodeSet.t BlockMap.t) = 
+  let interfere_graph = IUGraph.empty in
+  let add_interference g n1 n2 = specialAddEdge n1 n2 g in
+  let add_interference_for_set g live_set =
+    NodeSet.fold (fun node acc_graph ->
+      NodeSet.fold (fun other_node inner_acc_graph ->
+        add_interference inner_acc_graph node other_node
+      ) live_set acc_graph
+    ) live_set g
+  in
+  let process_block block live_out acc_graph = 
+    let rec handle_instruction instrs live_set graph = 
+      match instrs with
+      | [] -> graph
+      | instr::rest ->
+        (* let defined, used = instruction_def_use instr in 
+        let new_live_set = NodeSet.union (NodeSet.diff live_set defined) used in *)
+        let new_live_set = instruction_def_use live_set instr in
+        let new_graph = add_interference_for_set graph new_live_set in
+        handle_instruction rest new_live_set new_graph
+    in
+    handle_instruction (List.rev block) live_out acc_graph
+  in 
+  BlockMap.fold (fun block live_out acc_graph -> 
+    match block with
+    | Block b -> process_block b live_out acc_graph
+    | _ -> raise FatalError "BlockMap should only contain blocks"
+  ) live_out_map interfere_graph
+
+
 let build_interfere_graph (f : func) = 
     let flow_graph = make_graph f in
     let def_use_map = build_maps f in
@@ -419,5 +523,5 @@ let build_interfere_graph (f : func) =
     print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
     print_endline "Live Out Sets:";
     print_map final_live_out_sets;
-    let final_interfere_graph = add_edges_to_igraph final_live_in_sets final_live_out_sets in
+    let final_interfere_graph = build_interference_graph f final_live_out_sets in
     final_interfere_graph

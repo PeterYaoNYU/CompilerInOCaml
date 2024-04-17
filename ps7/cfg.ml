@@ -293,22 +293,33 @@ let rec analyze_liveness flow_graph def_use_map live_in_sets live_out_sets =
   let changes = ref false in 
 
   let new_live_in_sets, new_live_out_sets = 
+
     FlowNodeSet.fold (fun block_node (acc_live_in_sets, acc_live_out_sets) -> 
+
       let gen_set = BlockMap.find block_node (snd def_use_map) in 
       let kill_set = BlockMap.find block_node (fst def_use_map) in 
+      
       let live_out = FlowNodeSet.fold(fun succ live_out_acc -> 
         let succ_live_in = try BlockMap.find succ acc_live_in_sets with Not_found -> NodeSet.empty in
-        print_endline ">>>>>>>>>>>>>>>>>>>>>>>Succ live in";
-        print_set succ_live_in;
-        (* print_blocknode succ; *)
         NodeSet.union succ_live_in live_out_acc
       ) (FGraph.succ block_node flow_graph) NodeSet.empty in 
 
+      print_endline ">>>>>>>>>>>>>>>>>>>>>>>live out";
+      print_blocknode block_node;
+      print_set live_out;
+
       let live_in = NodeSet.union gen_set (NodeSet.diff live_out kill_set) in
+      print_endline ">>>>>>>>>>>>>>>>>>>>>>>live in";
+      print_blocknode block_node;
+      print_set live_in;
       let prev_live_in = try BlockMap.find block_node acc_live_in_sets with Not_found -> NodeSet.empty in
       let prev_live_out = try BlockMap.find block_node acc_live_out_sets with Not_found -> NodeSet.empty in
-      if (NodeSet.equal live_out prev_live_out) then 
-        (acc_live_in_sets, acc_live_out_sets)
+      if (NodeSet.equal live_out prev_live_out) then (
+        print_endline ">>>>>>>>>>>>>>>>>>>>>>>nothing changes, cont to next block";
+        let updated_live_in_sets = BlockMap.add block_node live_in acc_live_in_sets in 
+        let updated_live_out_sets = BlockMap.add block_node live_out acc_live_out_sets in
+        (updated_live_in_sets, updated_live_out_sets)
+      )
       else (
         changes := true;
         let updated_live_in_sets = BlockMap.add block_node live_in acc_live_in_sets in 
@@ -318,7 +329,7 @@ let rec analyze_liveness flow_graph def_use_map live_in_sets live_out_sets =
     ) (FGraph.nodes flow_graph) (live_in_sets, live_out_sets) 
   in if !changes then analyze_liveness flow_graph def_use_map new_live_in_sets new_live_out_sets else (new_live_in_sets, new_live_out_sets)
 
-let add_edges_to_igraph (live_out_sets: NodeSet.t BlockMap.t): interfere_graph =
+let add_edges_to_igraph (live_in_sets: NodeSet.t BlockMap.t) (live_out_sets: NodeSet.t BlockMap.t): interfere_graph =
   let interfere_graph = IUGraph.empty in
   let add_interferences block_live_out graph = 
     NodeSet.fold (fun node acc_graph -> 
@@ -327,7 +338,16 @@ let add_edges_to_igraph (live_out_sets: NodeSet.t BlockMap.t): interfere_graph =
       ) block_live_out acc_graph
     ) block_live_out graph
   in
-  BlockMap.fold (fun _ block_live_out acc_graph -> add_interferences block_live_out acc_graph) live_out_sets interfere_graph
+  let combined_sets = BlockMap.merge (fun _ live_in live_out ->
+    match live_in, live_out with
+    | Some ins, Some outs -> Some (NodeSet.union ins outs)
+    | Some ins, None -> Some ins
+    | None, Some outs -> Some outs
+    | None, None -> None
+  ) live_in_sets live_out_sets in
+  BlockMap.fold (fun _ combined_live_set acc_graph -> 
+    add_interferences combined_live_set acc_graph
+  ) combined_sets interfere_graph
 
 let build_interfere_graph (f : func) = 
     let flow_graph = make_graph f in
@@ -349,5 +369,5 @@ let build_interfere_graph (f : func) =
     print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
     print_endline "Live Out Sets:";
     print_map final_live_out_sets;
-    let final_interfere_graph = add_edges_to_igraph final_live_out_sets in
+    let final_interfere_graph = add_edges_to_igraph final_live_in_sets final_live_out_sets in
     final_interfere_graph

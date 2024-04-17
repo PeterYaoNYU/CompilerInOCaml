@@ -149,6 +149,20 @@ let add_node_to_use use node = NodeSet.add node use
 let process_instruction (def, use) inst = 
   match inst with 
   | Move (dest, src) ->
+    let use = (
+      match dest with 
+      | Var v -> (if (NodeSet.mem (VarNode v) use) then NodeSet.remove (VarNode v) use else use)
+      | Reg r -> (if (NodeSet.mem (RegNode r) use) then NodeSet.remove (RegNode r) use else use)
+      | _ -> use
+    )
+    in
+    let def = (
+      match src with
+      | Var v -> (if (NodeSet.mem (VarNode v) def) then NodeSet.remove (VarNode v) def else def)
+      | Reg r -> (if (NodeSet.mem (RegNode r) def) then NodeSet.remove (RegNode r) def else def)
+      | _ -> def
+    )
+    in
     let (def, use) = (
       match dest with 
       | Var v -> (add_node_to_def def (VarNode v), use)
@@ -162,6 +176,24 @@ let process_instruction (def, use) inst =
     ) in
     (def, use)
   | Arith (dest, src, _, src2) -> 
+    let use = (
+      match dest with 
+      | Var v -> (if (NodeSet.mem (VarNode v) use) then NodeSet.remove (VarNode v) use else use)
+      | Reg r -> (if (NodeSet.mem (RegNode r) use) then NodeSet.remove (RegNode r) use else use)
+      | _ -> use
+    ) in
+    let def = (
+      match src with
+      | Var v -> (if (NodeSet.mem (VarNode v) def) then NodeSet.remove (VarNode v) def else def)
+      | Reg r -> (if (NodeSet.mem (RegNode r) def) then NodeSet.remove (RegNode r) def else def)
+      | _ -> def
+    ) in
+    let def = (
+      match src2 with
+      | Var v -> (if (NodeSet.mem (VarNode v) def) then NodeSet.remove (VarNode v) def else def)
+      | Reg r -> (if (NodeSet.mem (RegNode r) def) then NodeSet.remove (RegNode r) def else def)
+      | _ -> def
+    ) in
     let (def, use) = match dest with 
       | Var v -> (add_node_to_def def (VarNode v), use)
       | Reg r -> (add_node_to_def def (RegNode r), use)
@@ -190,6 +222,18 @@ let process_instruction (def, use) inst =
     ) in
     (def, use)
   | Load (dest, src, _) -> 
+    let use = (
+      match dest with 
+      | Var v -> (if (NodeSet.mem (VarNode v) use) then NodeSet.remove (VarNode v) use else use)
+      | Reg r -> (if (NodeSet.mem (RegNode r) use) then NodeSet.remove (RegNode r) use else use)
+      | _ -> use
+    ) in
+    let def = (
+      match src with
+      | Var v -> (if (NodeSet.mem (VarNode v) def) then NodeSet.remove (VarNode v) def else def)
+      | Reg r -> (if (NodeSet.mem (RegNode r) def) then NodeSet.remove (RegNode r) def else def)
+      | _ -> def
+    ) in
     let (def, use) = (
       match dest with 
       | Var v -> (add_node_to_def def (VarNode v), use)
@@ -202,12 +246,19 @@ let process_instruction (def, use) inst =
     ) in
     (def, use)
   | Store (_, _, src) -> 
+    let def = (
+      match src with
+      | Var v -> (if (NodeSet.mem (VarNode v) def) then NodeSet.remove (VarNode v) def else def)
+      | Reg r -> (if (NodeSet.mem (RegNode r) def) then NodeSet.remove (RegNode r) def else def)
+      | _ -> def
+    ) in
     let (def, use) = (
       match src with 
       | Var v -> (def, add_node_to_use use (VarNode v))
       | Reg r -> (def, add_node_to_use use (RegNode r))
     ) in
     (def, use)
+    (* Pending, do not know precisely how to handle the call case *)
   | Call _ -> 
     let def = (NodeSet.union (NodeSet.of_list (List.map (fun x -> RegNode x) call_kill_list_reg)) def) in
     let use = (NodeSet.union (NodeSet.of_list (List.map (fun x -> RegNode x) call_gen_list_reg)) use) in
@@ -215,7 +266,8 @@ let process_instruction (def, use) inst =
   | _ -> (def, use)
 
 let update_maps block (def_map, use_map) =
-  let def, use = List.fold_left process_instruction (NodeSet.empty, NodeSet.empty) block in
+  let instructions = List.rev block in 
+  let def, use = List.fold_left process_instruction (NodeSet.empty, NodeSet.empty) instructions in
   let block_node = Block block in
   (BlockMap.add block_node def def_map, BlockMap.add block_node use use_map)
 

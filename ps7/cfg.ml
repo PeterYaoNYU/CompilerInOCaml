@@ -341,6 +341,7 @@ let live_out_sets : iigraph_node list BlockMap.t = BlockMap.empty *)
 
 (* let build_interfere_graph (f : func) : interfere_graph =  *)
 
+(* OK I admit that I write code that I cannot even read myself FUCK *)
 let rec analyze_liveness flow_graph def_use_map live_in_sets live_out_sets =
   let changes = ref false in 
 
@@ -368,9 +369,7 @@ let rec analyze_liveness flow_graph def_use_map live_in_sets live_out_sets =
       let prev_live_out = try BlockMap.find block_node acc_live_out_sets with Not_found -> NodeSet.empty in
       if (NodeSet.equal live_out prev_live_out) then (
         print_endline ">>>>>>>>>>>>>>>>>>>>>>>nothing changes, cont to next block";
-        let updated_live_in_sets = BlockMap.add block_node live_in acc_live_in_sets in 
-        let updated_live_out_sets = BlockMap.add block_node live_out acc_live_out_sets in
-        (updated_live_in_sets, updated_live_out_sets)
+        (acc_live_in_sets, acc_live_out_sets)
       )
       else (
         changes := true;
@@ -412,7 +411,6 @@ let build_interfere_graph (f : func) =
     print_map (snd def_use_map);
     print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
     print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
-    let initial_live_in_sets = BlockMap.empty in
     let initial_live_out_sets = BlockMap.empty in
     let final_live_in_sets, final_live_out_sets = analyze_liveness flow_graph def_use_map (snd def_use_map) initial_live_out_sets in
     print_endline ">>>>>>>>>>>>>>>>>>>>>>>";

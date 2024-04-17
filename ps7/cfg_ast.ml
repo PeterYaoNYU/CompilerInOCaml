@@ -100,11 +100,15 @@ let prog2string p =
 let inc r = let c = !r in r := c+1; c 
 (* generate fresh labels *)
 let label_counter = ref 0
+let reset_label() = label_counter := 0
 let new_label() = ".L" ^ (string_of_int(inc label_counter))
 
 (* generate fresh temps *)
 let temp_counter = ref 0
+let reset_temp() = temp_counter := 0
 let new_temp() = "x" ^ (string_of_int(inc temp_counter))
+
+let reset_counters() = reset_temp(); reset_label()
 
 (*******************************************************************)
 (* Translate a Cish function to a set of basic blocks.  Note
@@ -345,9 +349,11 @@ let fn2blocks (C.Fn {C.name=name;C.args=args;C.body=body;C.pos=pos}) : block lis
     (* emit prologue -- later, we'll have to add code to adjust the
      * stack pointer to set aside space to save any spilled values *)
     let _ = emit_inst (Label name) in
+    (*
         (* generate temps for all of the callee-saves registers *)
     let callee_temps = save_callee_regs() in
         (* load any arguments into temps *)
+     *)
     let env = load_args empty_env (args,0) in
     (* generate the body of the function *)
     let _ = emit_stmt env body in
@@ -357,8 +363,10 @@ let fn2blocks (C.Fn {C.name=name;C.args=args;C.body=body;C.pos=pos}) : block lis
     (* generate epilogue *)
     let _ = emit_inst (Label epilogue) in
     (* restore callee-saves registers *)
+    (*
     let _ = restore_callee_regs callee_temps in
     (* return from function *)
+     *)
     let _ = emit_inst Return in
     (* finally, break instructions into basic blocks *)
     get_blocks (List.rev(!curr_insts))

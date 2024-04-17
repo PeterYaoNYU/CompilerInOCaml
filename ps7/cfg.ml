@@ -381,7 +381,9 @@ let rec analyze_liveness flow_graph def_use_map live_in_sets live_out_sets =
       let prev_live_out = try BlockMap.find block_node acc_live_out_sets with Not_found -> NodeSet.empty in
       if (NodeSet.equal live_out prev_live_out) then (
         print_endline ">>>>>>>>>>>>>>>>>>>>>>>nothing changes, cont to next block";
-        (acc_live_in_sets, acc_live_out_sets)
+        let updated_live_in_sets = BlockMap.add block_node prev_live_in acc_live_in_sets in
+        let updated_live_out_sets = BlockMap.add block_node prev_live_out acc_live_out_sets in
+        (updated_live_in_sets, updated_live_out_sets)
       )
       else (
         changes := true;
@@ -523,21 +525,21 @@ let build_interference_graph (blocks: block list) (live_out_map: NodeSet.t Block
 let build_interfere_graph (f : func) = 
     let flow_graph = make_graph f in
     let def_use_map = build_maps f in
-    (* print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
+    print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
     print_endline "Def Map:";
     print_map (fst def_use_map);
     print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
     print_endline "Use Map:";
     print_map (snd def_use_map);
     print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
-    print_endline ">>>>>>>>>>>>>>>>>>>>>>>"; *)
+    print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
     let initial_live_out_sets = BlockMap.empty in
     let final_live_in_sets, final_live_out_sets = analyze_liveness flow_graph def_use_map (snd def_use_map) initial_live_out_sets in
-    (* print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
+    print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
     print_endline "Live In Sets:";
     print_map final_live_in_sets;
     print_endline ">>>>>>>>>>>>>>>>>>>>>>>";
-    print_endline "Live Out Sets:"; *)
+    print_endline "Live Out Sets:";
     print_map final_live_out_sets;
     let final_interfere_graph = build_interference_graph f final_live_out_sets in
     final_interfere_graph

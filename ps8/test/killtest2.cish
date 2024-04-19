@@ -1,0 +1,13 @@
+main(){
+  let a = 0;{
+    let b = 0;{
+      let c = 0;{
+        a = c;
+        b = a;
+        c = a;
+        b = c;
+        return a;
+      }
+    }
+  }
+}

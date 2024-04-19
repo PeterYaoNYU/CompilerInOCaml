@@ -1,0 +1,93 @@
+For PS 8, your job is to implement graph-coloring based register allocation
+based on the interference graphs generated from PS 7.
+
+More specifically your job is to write the function
+
+  assign_colors : Cfg.interfere_graph -> function -> assign_result
+
+in regalloc.ml, and upload regalloc.ml to GradeScope when the autograder is live.
+
+In more detail, an assign_result is defined as:
+
+```
+type colormap = ((RegSet.elt option) NodeMap.t)
+
+type assign_result = 
+    | Success of colormap
+    | Fail of var list
+```  
+
+That is, given an inteference graph and the function it was derived from,
+the assign_colors function can do one of two things:
+
+1. Produce a successful coloring of the graph, as represented by
+   returning Success cm, where cm has type colormap, i.e. is a mapping
+   from variables to an optional register value, indicating what
+   register that temporary variable should be stored in.
+
+2. Fail to produce a coloring, as indicated by returning Fail vs,
+   where vs is a list of variables that should be spilled to decrease
+   the degree of the interference graph and (ideally) make it possible
+   to produce a coloring.
+
+In class we discussed many strategies and techniques for producing a
+coloring.  Feel free to consider some of the more advanced techniques,
+but to receive full credit, it suffices to just implement the first
+"simplification stack" based strategy we discussed initially: you
+don't need to consider coalescing, freezing, move edges, etc.
+
+We also discussed how when spilling, the choice of spilled temporary
+can affect code quality. However, for purposes of this assignment grading, if
+your code returns Fail, it doesn't matter which temporaries you return
+to spill, so long as they are in fact variables that are live at some
+point.
+
+You'll be assessed based on whether your code produces valid colorings
+or not, particularly for graphs that should be colorable using the
+simplest strategy we discussed in lecture. In particular, if every
+node in the graph has degree less than the number of available
+registers, then the simplification strategy we discussed ought to
+produce a valid coloring.
+
+***IMPORTANT***:
+If you managed to get interference graph generation working (even if
+it wasn't perfect), you'll want to copy your cfg.ml from PS7 into this
+problem set to generate the interference graphs that your register
+allocator code will color.
+****************
+
+Don't worry if you didn't get PS7 working without bugs -- you can
+alternatively test by generating test graphs some other way calling
+assign_colors directly, and checking that your register allocator at
+least assigns colors correctly. Also, when grading, I'll use my own
+implementation of PS7, so you don't have to worry about losing points
+because of that.
+
+In the starter code, I've additionally provided code that, when
+combined with your interference graph generator and you implementation
+of assign_colors, will carry out the remaining steps to generate MIPS
+code. In particular, it includes code to:
+
+- Rewrite the CFG blocks to spill an indicated list of temporaries,
+- Rewrite CFG blocks with assigned registers for temps, and
+- Convert CFG code into final MIPS assembly output.
+
+If you run `make` it produces a binary called ./ps8_cfg. Running
+
+ ./ps8_cfg [name of cish file] [output file to store mips code]
+
+first calls the cish to block converter, then calls reg_alloc in
+regalloc.ml, which in a loop repeatedly alternates attempting to color
+with spilling, until it finally generates a valid coloring. Once it
+has a coloring, it rewrites the code to replace temporaries with the
+assigned registers, and then the resulting CFG is converted to MIPS
+code and stored to an output file.
+
+As in previous assignments, you can test the resulting MIPS code with
+spim.  Just like in those assignments, you may wish to concatenate the
+included print.asm implementations of printInt with the MIPS code you
+generate, so that you can insert calls to printInt to get output when
+using spim.
+
+You may also find it useful to test by manually adding in printing of
+the generated coloring graphs so you can inspect those directly.

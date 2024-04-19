@@ -1,0 +1,11 @@
+main(){
+  let x = f ;{
+    let y = f;{
+      x = 10;
+      return y(x);
+    }
+  }
+}
+f(a){
+  return a;
+}

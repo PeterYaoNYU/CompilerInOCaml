@@ -1,10 +1,13 @@
 open Mips
 open Cfg_ast
+open Cfg
 
 exception AllocError of string
 exception Implement_Me
 
-module NodeMap = Map.Make(Cfg.IGraphNode)                                                   
+module NodeMap = Map.Make(Cfg.IGraphNode)    
+
+(* module NodeSet = Set.Make(IGraphNode)                                                    *)
 
 module RegSet = Set.Make(struct
                   type t = reg
@@ -58,7 +61,70 @@ type assign_result =
  *)
 
 let assign_colors (ig: Cfg.interfere_graph) f : assign_result =
-    raise Implement_Me
+  let num_regs = regcount in
+  let stack = ref [] in 
+  let coloring = ref NodeMap.empty in 
+
+  let push_node n = stack := n::!stack in 
+  let pop_node() = 
+    match !stack with 
+    | [] -> raise (AllocError "Empty stack")
+    | hd :: tl -> stack := tl; hd
+  in
+
+  let rec simplify_graph nodes = 
+    try 
+    let (node, degree) = 
+      NodeSet.fold (fun n (acc_n, acc_d) -> 
+        let d = IUGraph.degree n ig in
+        if d < acc_d && d < num_regs then (Some n, d) else (acc_n, acc_d)  
+      ) nodes (None, num_regs)
+    in
+    match node with 
+    | None -> ()
+    | Some n ->
+      IUGraph.rmNode n ig;
+      push_node n;
+      simplify_graph (NodeSet.remove n nodes)
+    with _ -> raise (AllocError "Error in simplify_graph")
+  in 
+
+  let all_nodes = IUGraph.nodes ig in 
+  simplify_graph all_nodes;
+
+  let available_colors = RegSet.elements validregset in
+  while !stack <> [] do
+    let node = pop_node() in
+    let neighbors = IUGraph.adj node ig in
+    let forbidden_colors = 
+      NodeSet.fold (fun n acc ->
+        match NodeMap.find n !coloring with
+        | Some c -> RegSet.add c acc
+        | None -> acc
+      ) neighbors RegSet.empty
+    in
+    let rec assing_color = function 
+      | [] -> raise (AllocError "Not enough colors")
+      | h :: t -> 
+        if RegSet.mem h forbidden_colors then 
+          assing_color t
+        else
+          begin
+            coloring := NodeMap.add node (Some h) !coloring;
+          end
+    in
+    assing_color available_colors
+  done;
+
+  if NodeSet.cardinal (IUGraph.nodes ig) > 0 then 
+    Fail (List.map (fun n -> match n with 
+                          VarNode v -> Some v 
+                          | _ -> None)
+              (NodeSet.elements (IUGraph.nodes ig))
+              |> List.filter_map Fun.id)
+else 
+  Success !coloring 
+
 
 let rec reg_alloc_spill (fraw : func) (sl: var list): func = 
   (*First spill all of the vars in sl by adding loads/stores to fraw*)

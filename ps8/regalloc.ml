@@ -61,6 +61,7 @@ type assign_result =
  *)
 
 let assign_colors (ig: Cfg.interfere_graph) f : assign_result =
+  print_string "Begin assign colors\n";
   let num_regs = regcount in
   let stack = ref [] in 
   let coloring = ref NodeMap.empty in 
@@ -91,18 +92,36 @@ let assign_colors (ig: Cfg.interfere_graph) f : assign_result =
 
   let all_nodes = IUGraph.nodes ig in 
   simplify_graph all_nodes;
+  print_string "Simplify graph done\n";
 
   let available_colors = RegSet.elements validregset in
   while !stack <> [] do
     let node = pop_node() in
+    print_string "Popped node\n";
     let neighbors = IUGraph.adj node ig in
+    print_string "Neighbors done\n";
+
+
+    print_endline "Current Node Neighbors:";
+    NodeSet.iter (fun n -> print_endline (string_of_node n)) neighbors;
+
+    print_endline "Current Coloring Map:";
+    NodeMap.iter (fun k v -> match v with
+      | Some c -> print_endline (string_of_node k ^ " -> " ^ Mips.reg2string c)
+      | None -> ()) !coloring;
+
+
     let forbidden_colors = 
       NodeSet.fold (fun n acc ->
-        match NodeMap.find n !coloring with
-        | Some c -> RegSet.add c acc
-        | None -> acc
+        if NodeMap.mem n !coloring then
+          match NodeMap.find n !coloring with
+          | Some c -> RegSet.add c acc
+          | None -> acc
+        else
+          acc
       ) neighbors RegSet.empty
     in
+    print_string "Forbidden colors done\n";
     let rec assing_color = function 
       | [] -> raise (AllocError "Not enough colors")
       | h :: t -> 
@@ -116,6 +135,8 @@ let assign_colors (ig: Cfg.interfere_graph) f : assign_result =
     assing_color available_colors
   done;
 
+  print_string "Assign colors done\n";
+
   if NodeSet.cardinal (IUGraph.nodes ig) > 0 then 
     Fail (List.map (fun n -> match n with 
                           VarNode v -> Some v 
@@ -128,6 +149,7 @@ else
 
 let rec reg_alloc_spill (fraw : func) (sl: var list): func = 
   (*First spill all of the vars in sl by adding loads/stores to fraw*)
+  print_string "Begin reg alloc spill\n";
   let f = Spill.spill fraw sl in
   let ig = Cfg.build_interfere_graph f in
   let colormapopt = assign_colors ig f in

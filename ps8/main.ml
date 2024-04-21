@@ -19,7 +19,9 @@ let process_fn fn =
    | Fn {name; args; body; pos} -> print_string ("==========================\nProcessing function: " ^ name ^ "\n"));
   print_string ("blocks =\n" ^
     (Cfg_ast.fun2string curfblocks)^ "\n");
+  print_string ("begin building interfere graph\n");
   let ig = Cfg.build_interfere_graph curfblocks in
+  print_string ("Interference graph finished\n");
   let _ = print_string (Cfg.string_of_igraph ig) in
   Regalloc.reg_alloc curfblocks
 

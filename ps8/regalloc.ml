@@ -60,9 +60,19 @@ type assign_result =
 
  *)
 
+ let remove_register_nodes ig =
+  let nodes = IUGraph.nodes ig in
+  NodeSet.fold (fun node acc_ig ->
+    match node with
+    | Cfg.RegNode _ -> IUGraph.rmNode node acc_ig  
+    | _ -> acc_ig  
+  ) nodes ig  
+
 let assign_colors (ig: Cfg.interfere_graph) f : assign_result =
+  let ig = remove_register_nodes ig in
   print_string "Begin assign colors\n";
   let num_regs = regcount in
+  print_int num_regs;
   let stack = ref [] in 
   let coloring = ref NodeMap.empty in 
 
@@ -122,29 +132,39 @@ let assign_colors (ig: Cfg.interfere_graph) f : assign_result =
       ) neighbors RegSet.empty
     in
     print_string "Forbidden colors done\n";
-    let rec assing_color = function 
+    let rec assign_color = function 
       | [] -> raise (AllocError "Not enough colors")
       | h :: t -> 
         if RegSet.mem h forbidden_colors then 
-          assing_color t
+          assign_color t
         else
           begin
             coloring := NodeMap.add node (Some h) !coloring;
           end
     in
-    assing_color available_colors
+    assign_color available_colors
   done;
 
   print_string "Assign colors done\n";
+  print_endline "Current Coloring Map:";
+  NodeMap.iter (fun k v -> match v with
+    | Some c -> print_endline (string_of_node k ^ " -> " ^ Mips.reg2string c)
+    | None -> ()) !coloring;
 
-  if NodeSet.cardinal (IUGraph.nodes ig) > 0 then 
+  if NodeSet.cardinal (IUGraph.nodes ig) > NodeMap.cardinal !coloring then 
+  (
+    print_endline "Failed to color all nodes";
     Fail (List.map (fun n -> match n with 
                           VarNode v -> Some v 
                           | _ -> None)
               (NodeSet.elements (IUGraph.nodes ig))
               |> List.filter_map Fun.id)
-else 
-  Success !coloring 
+  )
+  else(
+    print_endline "Success!";
+    Success !coloring
+  )
+
 
 
 let rec reg_alloc_spill (fraw : func) (sl: var list): func = 
@@ -152,6 +172,8 @@ let rec reg_alloc_spill (fraw : func) (sl: var list): func =
   print_string "Begin reg alloc spill\n";
   let f = Spill.spill fraw sl in
   let ig = Cfg.build_interfere_graph f in
+  (* let updated_ig = remove_register_nodes ig in *)
+  (* let _ = print_string (Cfg.string_of_igraph updated_ig) in *)
   let colormapopt = assign_colors ig f in
     match colormapopt with
       | Success colormap ->

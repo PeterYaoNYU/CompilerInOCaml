@@ -60,6 +60,13 @@ type assign_result =
 
  *)
 
+let count_register_nodes (ig: Cfg.interfere_graph) : int = 
+  let all_nodes = IUGraph.nodes ig in
+  NodeSet.fold (fun node acc -> match node with
+    | Cfg.RegNode _ -> acc + 1
+    | _ -> acc
+  ) all_nodes 0
+
 let all_register_nodes (ig : Cfg.interfere_graph) : bool = 
   let nodes = IUGraph.nodes ig in
   NodeSet.for_all (fun node -> match node with
@@ -76,8 +83,9 @@ let all_register_nodes (ig : Cfg.interfere_graph) : bool =
   ) nodes ig  
 
 let assign_colors (ig: Cfg.interfere_graph) f : assign_result =
-  let ig = remove_register_nodes ig in
+  (* let ig = remove_register_nodes ig in *)
   print_string "Begin assign colors\n";
+  let reg_count = count_register_nodes ig in
   let num_regs = regcount in
   print_int num_regs;
   let stack = ref [] in 
@@ -92,17 +100,22 @@ let assign_colors (ig: Cfg.interfere_graph) f : assign_result =
 
   let rec simplify_graph nodes = 
     try 
-    let (node, degree) = 
-      NodeSet.fold (fun n (acc_n, acc_d) -> 
-        let d = IUGraph.degree n ig in
-        if d < acc_d && d < num_regs then (Some n, d) else (acc_n, acc_d)  
-      ) nodes (None, num_regs)
-    in
-    match node with 
-    | None -> ()
-    | Some n ->
-      IUGraph.rmNode n ig;
-      push_node n;
+      if all_register_nodes ig then (print_endline "all nodes left are registers"; ())
+      else
+      let (node, degree) = 
+        NodeSet.fold (fun n (acc_n, acc_d) -> 
+          match n with
+          | Cfg.RegNode _ -> (acc_n, acc_d)
+          | _ ->
+            let d = IUGraph.degree n ig in
+            if d < acc_d && d < num_regs then (Some n, d) else (acc_n, acc_d)  
+        ) nodes (None, num_regs)
+      in
+      match node with 
+      | None -> ()
+      | Some n ->
+        IUGraph.rmNode n ig;
+        push_node n;
       simplify_graph (NodeSet.remove n nodes)
     with _ -> raise (AllocError "Error in simplify_graph")
   in 
@@ -130,12 +143,18 @@ let assign_colors (ig: Cfg.interfere_graph) f : assign_result =
 
     let forbidden_colors = 
       NodeSet.fold (fun n acc ->
-        if NodeMap.mem n !coloring then
-          match NodeMap.find n !coloring with
-          | Some c -> RegSet.add c acc
-          | None -> acc
-        else
-          acc
+        match n with 
+        | Cfg.RegNode _ -> 
+          RegSet.add (string2reg (string_of_node n) ) acc
+        | Cfg.VarNode _ ->
+          (
+            if NodeMap.mem n !coloring then
+              match NodeMap.find n !coloring with
+              | Some c -> RegSet.add c acc
+              | None -> acc
+            else
+              acc
+          )
       ) neighbors RegSet.empty
     in
     print_string "Forbidden colors done\n";
@@ -158,7 +177,7 @@ let assign_colors (ig: Cfg.interfere_graph) f : assign_result =
     | Some c -> print_endline (string_of_node k ^ " -> " ^ Mips.reg2string c)
     | None -> ()) !coloring;
 
-  if NodeSet.cardinal (IUGraph.nodes ig) > NodeMap.cardinal !coloring then 
+  if NodeSet.cardinal (IUGraph.nodes ig) > ((NodeMap.cardinal !coloring) + reg_count) then 
   (
     print_endline "Failed to color all nodes";
     Fail (List.map (fun n -> match n with 

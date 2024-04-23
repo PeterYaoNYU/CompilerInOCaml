@@ -60,6 +60,13 @@ type assign_result =
 
  *)
 
+let all_register_nodes (ig : Cfg.interfere_graph) : bool = 
+  let nodes = IUGraph.nodes ig in
+  NodeSet.for_all (fun node -> match node with
+    | Cfg.RegNode _ -> true
+    | _ -> false
+  ) nodes
+
  let remove_register_nodes ig =
   let nodes = IUGraph.nodes ig in
   NodeSet.fold (fun node acc_ig ->

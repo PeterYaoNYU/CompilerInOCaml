@@ -98,36 +98,43 @@ let assign_colors (ig: Cfg.interfere_graph) f : assign_result =
     | hd :: tl -> stack := tl; hd
   in
 
-  let rec simplify_graph nodes = 
+  let rec simplify_graph nodes ig= 
     try 
-      if all_register_nodes ig then (print_endline "all nodes left are registers"; ())
+      if all_register_nodes ig then (print_string (string_of_igraph ig); print_endline "all nodes left are registers"; ())
       else
+      (* print_string (string_of_igraph ig); *)
+      print_endline "Simplify graph begin";
       let (node, degree) = 
         NodeSet.fold (fun n (acc_n, acc_d) -> 
+          print_string ("Node: " ^ string_of_node n ^ "\n");
           match n with
           | Cfg.RegNode _ -> (acc_n, acc_d)
           | _ ->
             let d = IUGraph.degree n ig in
-            if d < acc_d && d < num_regs then (Some n, d) else (acc_n, acc_d)  
+            print_string ("Degree: " ^ string_of_int d ^ " acc_d " ^ string_of_int acc_d ^ " num reg " ^ string_of_int num_regs ^ "\n");
+            if d < num_regs then (Some n, d) else (acc_n, acc_d)  
         ) nodes (None, num_regs)
       in
       match node with 
-      | None -> ()
+      | None -> (print_string "Simplify graph: no node left somehow\n";())
       | Some n ->
-        IUGraph.rmNode n ig;
+        let ig = IUGraph.rmNode n ig in
         push_node n;
-      simplify_graph (NodeSet.remove n nodes)
+      simplify_graph (NodeSet.remove n nodes) ig
     with _ -> raise (AllocError "Error in simplify_graph")
   in 
 
   let all_nodes = IUGraph.nodes ig in 
-  simplify_graph all_nodes;
+  simplify_graph all_nodes ig;
   print_string "Simplify graph done\n";
 
   let available_colors = RegSet.elements validregset in
   while !stack <> [] do
+    print_endline "Current Stack:";
+    List.iter (fun n -> print_endline (string_of_node n)) !stack;
+
     let node = pop_node() in
-    print_string "Popped node\n";
+    print_string ("Popped node " ^ string_of_node node ^ "\n");
     let neighbors = IUGraph.adj node ig in
     print_string "Neighbors done\n";
 

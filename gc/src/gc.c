@@ -31,14 +31,6 @@
 #define GC_TAG_MARK 0x2
 
 /*
- * Support for windows c compiler is added by adding this macro.
- * Tested on: Microsoft (R) C/C++ Optimizing Compiler Version 19.24.28314 for x86
- */
-#if defined(_MSC_VER)
-#define __builtin_frame_address(x)  ((void)(x), _AddressOfReturnAddress())
-#endif
-
-/*
  * Define a globally available GC object; this allows all code that
  * includes the gc.h header to access a global static garbage collector.
  * Convenient for single-threaded code, insufficient for multi-threaded
@@ -561,6 +553,8 @@ void gc_mark(GarbageCollector* gc)
     void (*volatile _mark_stack)(GarbageCollector*) = gc_mark_stack;
     jmp_buf ctx;
     memset(&ctx, 0, sizeof(jmp_buf));
+    // the setjmp function effectively dumps the registers onto the stack, by saving them into a variable called 
+    // ctx, and then returns 0.
     setjmp(ctx);
     _mark_stack(gc);
 }

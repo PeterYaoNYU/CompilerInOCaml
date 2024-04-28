@@ -11,11 +11,20 @@
 
 struct AllocationMap;
 
+typedef struct Heap {
+    void * from_space;
+    void * to_space;
+    void * from_space_end;
+    void * to_space_end;
+    void * allocation_pointer; // Current pointer in the to space
+} Heap;
+
 typedef struct GarbageCollector {
     struct AllocationMap* allocs; // allocation map
     bool paused;                  // (temporarily) switch gc on/off
     void *bos;                    // bottom of stack
     size_t min_size;
+    Heap heap;
 } GarbageCollector;
 
 extern GarbageCollector gc;  // Global garbage collector for all
@@ -42,6 +51,8 @@ void* gc_calloc(GarbageCollector* gc, size_t count, size_t size);
 void* gc_calloc_ext(GarbageCollector* gc, size_t count, size_t size, void (*dtor)(void*));
 void* gc_realloc(GarbageCollector* gc, void* ptr, size_t size);
 void gc_free(GarbageCollector* gc, void* ptr);
+
+void* Forward(GarbageCollector* gc, void* ptr);
 
 /*
  * Lifecycle management

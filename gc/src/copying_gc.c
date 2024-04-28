@@ -637,6 +637,28 @@ char* gc_strdup (GarbageCollector* gc, const char* s)
     return (char*) memcpy(new, s, len);
 }
 
+
+// helper functions for stop and copy
+bool isPointerToFromSpace(GarbageCollector * gc, void * ptr) {
+    return ptr >= gc->heap.from_space && ptr < gc->heap.from_space_end;
+}
+
+bool isPointerToToSpace(GarbageCollector * gc, void * ptr) {
+    return ptr >= gc->heap.to_space && ptr < gc->heap.to_space_end;
+}
+
+size_t getObjectSize(GarbageCollector * gc, void * ptr) {
+    Allocation * alloc = gc_allocation_map_get(gc->allocs, ptr);
+    return alloc->size;
+}
+
+
+/**
+ * Forward a pointer to the new location in the to space.
+ *
+ * @param gc The garbage collector
+ * @param ptr The pointer to the memory to manage.
+ */
 void * forward(GarbageCollector * gc, void * ptr) {
     // Check if the pointer is in the from space
     // if not, it has already been copied, or is not a pointer at all
@@ -663,5 +685,35 @@ void * forward(GarbageCollector * gc, void * ptr) {
     }
 }
 
+void garbageCollect(GarbageCollector *gc) {
+    void * scan = gc->heap.to_space;
+    gc->heap.allocation_pointer = gc->heap.to_space;
 
+    // forward all the roots
+    LOG_DEBUG("Forwarding roots%s", "");
+    for (size_t i = 0; i < gc->allocs->capacity; ++i) {
+        Allocation* chunk = gc->allocs->allocs[i];
+        while (chunk) {
+            if (chunk->tag & GC_TAG_ROOT) {
+                void * new_location = forward(gc, chunk->ptr);
+                chunk->ptr = new_location;
+            }
+            chunk = chunk->next;
+        }
+    }
+
+    // What is missing: copying the pointers in the stack and the registers
+    // with our current implementation, we don't make them roots
+
+    // forward all the objects in the to space
+    while (scan < gc->heap.allocation_pointer) {
+        copy_object(gc, scan);  
+    }
+
+    // swap the semi-spaces
+    void* temp = gc->heap.from_space;
+    gc->heap.from_space = gc->heap.to_space;
+    gc->heap.to_space = temp;
+    gc->heap.allocation_pointer = gc->heap.to_space;
+}
 

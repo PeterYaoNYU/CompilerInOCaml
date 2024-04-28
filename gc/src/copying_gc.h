@@ -53,7 +53,6 @@ void* gc_realloc(GarbageCollector* gc, void* ptr, size_t size);
 void gc_free(GarbageCollector* gc, void* ptr);
 
 void* Forward(GarbageCollector* gc, void* ptr);
-
 /*
  * Lifecycle management
  */

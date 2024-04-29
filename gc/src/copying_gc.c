@@ -43,7 +43,6 @@ GarbageCollector gc; // global GC object
 
 static bool is_prime(size_t n)
 {
-    /* https://stackoverflow.com/questions/1538644/c-determine-if-a-number-is-prime */
     if (n <= 3)
         return n > 1;     // as 2 and 3 are prime
     else if (n % 2==0 || n % 3==0)
@@ -129,6 +128,16 @@ typedef struct AllocationMap {
     size_t size;
     Allocation** allocs;
 } AllocationMap;
+
+
+void gc_init_heap(GarbageCollector *gc, size_t total_size) {
+    void * heap_space = malloc(total_size);
+    gc->heap.from_space = heap_space;
+    gc->heap.to_space = (void *) ((char *) heap_space + total_size / 2);
+    gc->heap.from_space_end = gc->heap.to_space;
+    gc->heap.to_space_end = (void *) ((char *) heap_space + total_size);
+    gc->heap.allocation_pointer = gc->heap.from_space;
+}
 
 /**
  * Determine the current load factor of an `AllocationMap`.
@@ -342,35 +351,23 @@ static bool gc_needs_sweep(GarbageCollector* gc)
 static void* gc_allocate(GarbageCollector* gc, size_t count, size_t size, void(*dtor)(void*))
 {
     /* Allocation logic that generalizes over malloc/calloc. */
+    void * alloc_ptr = gc->heap.allocation_pointer;
+    void * next_alloc_ptr = (void *) ((char *) alloc_ptr + size);
 
-    /* Check if we reached the high-water mark and need to clean up */
-    if (gc_needs_sweep(gc) && !gc->paused) {
-        size_t freed_mem = gc_run(gc);
-        LOG_DEBUG("Garbage collection cleaned up %lu bytes.", freed_mem);
-    }
-    /* With cleanup out of the way, attempt to allocate memory */
-    void* ptr = gc_mcalloc(count, size);
-    size_t alloc_size = count ? count * size : size;
-    /* If allocation fails, force an out-of-policy run to free some memory and try again. */
-    if (!ptr && !gc->paused && (errno == EAGAIN || errno == ENOMEM)) {
+    if ( next_alloc_ptr > gc->heap.to_space_end) {
         gc_run(gc);
-        ptr = gc_mcalloc(count, size);
-    }
-    /* Start managing the memory we received from the system */
-    if (ptr) {
-        LOG_DEBUG("Allocated %zu bytes at %p", alloc_size, (void*) ptr);
-        Allocation* alloc = gc_allocation_map_put(gc->allocs, ptr, alloc_size, dtor);
-        /* Deal with metadata allocation failure */
-        if (alloc) {
-            LOG_DEBUG("Managing %zu bytes at %p", alloc_size, (void*) alloc->ptr);
-            ptr = alloc->ptr;
-        } else {
-            /* We failed to allocate the metadata, fail cleanly. */
-            free(ptr);
-            ptr = NULL;
+        alloc_ptr = gc->heap.allocation_pointer;
+        next_alloc_ptr = (char *) alloc_ptr + size;
+        if (next_alloc_ptr > gc->heap.to_space_end) {
+            LOG_ERROR("Out of memory%s", "");
+            // potentially, expand the semheap here. For now, just return NULL.
+            return NULL;
         }
     }
-    return ptr;
+
+    gc->heap.allocation_pointer = next_alloc_ptr;
+    gc_allocation_map_put(gc->allocs, alloc_ptr, size, NULL);
+    return alloc_ptr;
 }
 
 static void gc_make_root(GarbageCollector* gc, void* ptr)
@@ -622,8 +619,9 @@ size_t gc_stop(GarbageCollector* gc)
 size_t gc_run(GarbageCollector* gc)
 {
     LOG_DEBUG("Initiating GC run (gc@%p)", (void*) gc);
-    gc_mark(gc);
-    return gc_sweep(gc);
+    memset(gc->heap.to_space, 0, (size_t)(gc->heap.to_space_end - gc->heap.to_space));
+
+    garbageCollect(gc);
 }
 
 char* gc_strdup (GarbageCollector* gc, const char* s)
@@ -685,6 +683,19 @@ void * forward(GarbageCollector * gc, void * ptr) {
     }
 }
 
+void copyObject(GarbageCollector *gc, void **scan) {
+    void * object = *scan;
+    size_t object_size = getObjectSize(gc, object);
+
+    for (size_t i = 0; i < object_size; i += sizeof(void *)) {
+        void * field = (void *)object + i;
+        void * new_field = forward(gc, field);
+        memcpy(field, &new_field, sizeof(void *));
+    }
+
+    *scan += object_size;
+}
+
 void garbageCollect(GarbageCollector *gc) {
     void * scan = gc->heap.to_space;
     gc->heap.allocation_pointer = gc->heap.to_space;
@@ -707,7 +718,7 @@ void garbageCollect(GarbageCollector *gc) {
 
     // forward all the objects in the to space
     while (scan < gc->heap.allocation_pointer) {
-        copy_object(gc, scan);  
+        copyObject(gc, scan);  
     }
 
     // swap the semi-spaces
@@ -716,4 +727,3 @@ void garbageCollect(GarbageCollector *gc) {
     gc->heap.to_space = temp;
     gc->heap.allocation_pointer = gc->heap.to_space;
 }
-

@@ -269,17 +269,15 @@ static char* test_gc_basic_alloc_free()
     ints[0] = 1;
 
     for (size_t i=0; i<16; ++i) {
-        LOG_DEBUG("Begin allocating 4 bytes","");
         ints[i] = gc_malloc_ext(&gc_, sizeof(int), dtor);
-        LOG_DEBUG("allocated 4 bytes","");
-        LOG_DEBUG("Allocated %p", ints[i]);
         *ints[i] = 42;
+        LOG_DEBUG("gc alloc size: %lu", gc_.allocs->size);
     }
     mu_assert(gc_.allocs->size == 17, "Wrong allocation map size");
     printf("begin test_gc_basic_alloc_free, all allocs created\n");
 
     /* Test that all managed allocations get tagged if the root is present */
-    gc_mark(&gc_);
+    gc_run(&gc_);
     for (size_t i=0; i<gc_.allocs->capacity; ++i) {
         Allocation* chunk = gc_.allocs->allocs[i];
         while (chunk) {

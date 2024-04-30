@@ -357,11 +357,14 @@ static bool gc_needs_sweep(GarbageCollector* gc)
 
 static void* gc_allocate(GarbageCollector* gc, size_t count, size_t size, void(*dtor)(void*))
 {
+    size_t alloc_size = count ? count * size : size;
+
     /* Allocation logic that generalizes over malloc/calloc. */
     void * alloc_ptr = gc->heap.allocation_pointer;
-    void * next_alloc_ptr = (void *) ((char *) alloc_ptr + size);
+    void * next_alloc_ptr = (void *) ((char *) alloc_ptr + alloc_size);
 
     if ( next_alloc_ptr > gc->heap.to_space_end) {
+        LOG_DEBUG("!!!Out of memory, initiating GC run%s", "");
         gc_run(gc);
         alloc_ptr = gc->heap.allocation_pointer;
         next_alloc_ptr = (char *) alloc_ptr + size;
@@ -371,8 +374,6 @@ static void* gc_allocate(GarbageCollector* gc, size_t count, size_t size, void(*
             return NULL;
         }
     }
-
-    size_t alloc_size = count ? count * size : size;
 
     gc->heap.allocation_pointer = next_alloc_ptr;
     gc_allocation_map_put(gc->allocs, alloc_ptr, alloc_size, NULL);
@@ -638,6 +639,9 @@ bool isPointerToToSpace(GarbageCollector * gc, void * ptr) {
 
 size_t getObjectSize(GarbageCollector * gc, void * ptr) {
     Allocation * alloc = gc_allocation_map_get(gc->allocs, ptr);
+    if (!alloc) {
+        return 0;
+    }
     return alloc->size;
 }
 
@@ -678,7 +682,16 @@ void * forward(GarbageCollector * gc, void * ptr) {
 
 void copyObject(GarbageCollector *gc, void **scan) {
     void * object = *scan;
-    size_t object_size = getObjectSize(gc, object);
+
+    // for testing purpose only
+    Allocation * alloc = gc_allocation_map_get(gc->allocs, object);
+    if (!alloc) {
+        return;
+    }
+    alloc->tag &= GC_TAG_MARK;
+    size_t object_size = alloc->size;
+
+    // size_t object_size = getObjectSize(gc, object);
 
     for (size_t i = 0; i < object_size; i += sizeof(void *)) {
         void * field = (void *)object + i;
@@ -699,6 +712,8 @@ void garbageCollect(GarbageCollector *gc) {
         Allocation* chunk = gc->allocs->allocs[i];
         while (chunk) {
             if (chunk->tag & GC_TAG_ROOT) {
+                // this marking is for testing purpose only 
+                chunk->tag &= GC_TAG_MARK;
                 void * new_location = forward(gc, chunk->ptr);
                 chunk->ptr = new_location;
             }
@@ -708,6 +723,18 @@ void garbageCollect(GarbageCollector *gc) {
 
     // What is missing: copying the pointers in the stack and the registers
     // with our current implementation, we don't make them roots
+    LOG_DEBUG("Forwarding stack%s", "");
+    void * tos = __builtin_frame_address(0);
+    void * bos = gc->bos;
+    for (char* p = (char*) tos; p <= (char*) bos - PTRSIZE; ++p) {
+        Allocation* alloc = gc_allocation_map_get(gc->allocs, *(void**)p);
+        if (alloc) {
+            // this marking is for testing purpose only
+            alloc->tag &= GC_TAG_MARK;
+            void * new_location = forward(gc, alloc->ptr);
+            *(void**)p = new_location;
+        }
+    }
 
     // forward all the objects in the to space
     while (scan < gc->heap.allocation_pointer) {
@@ -718,7 +745,7 @@ void garbageCollect(GarbageCollector *gc) {
     void* temp = gc->heap.from_space;
     gc->heap.from_space = gc->heap.to_space;
     gc->heap.to_space = temp;
-    gc->heap.allocation_pointer = gc->heap.to_space;
+    // gc->heap.allocation_pointer = gc->heap.to_space;
 }
 
 size_t gc_run(GarbageCollector* gc)

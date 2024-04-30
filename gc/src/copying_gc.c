@@ -623,9 +623,9 @@ void gc_unroot_roots(GarbageCollector* gc)
 size_t gc_stop(GarbageCollector* gc)
 {
     gc_unroot_roots(gc);
-    size_t collected = gc_sweep(gc);
+    // size_t collected = gc_sweep(gc);
     gc_allocation_map_delete(gc->allocs);
-    return collected;
+    return 0;
 }
 
 // helper functions for stop and copy
@@ -698,7 +698,7 @@ void copyObject(GarbageCollector *gc, void ***scan) {
     if (!alloc) {
         return;
     }
-    alloc->tag &= GC_TAG_MARK;
+    alloc->tag |= GC_TAG_MARK;
     size_t object_size = alloc->size;
     LOG_DEBUG("Copying object at %p with size %zu", *object, object_size);
 
@@ -726,7 +726,7 @@ void garbageCollect(GarbageCollector *gc) {
         while (chunk) {
             if (chunk->tag & GC_TAG_ROOT) {
                 // this marking is for testing purpose only 
-                chunk->tag &= GC_TAG_MARK;
+                chunk->tag |= GC_TAG_MARK;
                 void * new_location = forward(gc, chunk->ptr);
                 chunk->ptr = new_location;
             }
@@ -743,7 +743,7 @@ void garbageCollect(GarbageCollector *gc) {
         Allocation* alloc = gc_allocation_map_get(gc->allocs, *(void**)p);
         if (alloc) {
             // this marking is for testing purpose only
-            alloc->tag &= GC_TAG_MARK;
+            alloc->tag |= GC_TAG_MARK;
 
             LOG_DEBUG("Forwarding stack pointer %p", *(void**)p);
             void * new_location = forward(gc, alloc->ptr);

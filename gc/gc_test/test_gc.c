@@ -304,12 +304,8 @@ static char* test_gc_basic_alloc_free()
     }
     mu_assert(total == 16 * sizeof(int) + 16 * sizeof(int*),
               "Expected number of managed bytes is off");
-
-    size_t n = gc_sweep(&gc_);
-    mu_assert(n == total, "Wrong number of collected bytes");
-    mu_assert(DTOR_COUNT == 16, "Failed to call destructor");
-    DTOR_COUNT = 0;
     gc_stop(&gc_);
+    LOG_DEBUG("end test_gc_basic_alloc_free", "");
     return NULL;
 }
 

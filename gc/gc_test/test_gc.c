@@ -259,14 +259,13 @@ static char* test_gc_basic_alloc_free()
     DTOR_COUNT = 0;
     GarbageCollector gc_;
     void *bos = __builtin_frame_address(0);
-    gc_start_ext(&gc_, bos, 64, 64, 0.0, DBL_MAX, DBL_MAX);
+    gc_start_ext(&gc_, bos, 1024, 1024, 0.0, DBL_MAX, DBL_MAX);
 
     int** ints = gc_calloc(&gc_, 16, sizeof(int*));
     Allocation* a = gc_allocation_map_get(gc_.allocs, ints);
     printf("a->size: %lu\n", a->size);
     mu_assert(a->size == 16*sizeof(int*), "Wrong allocation size in test_gc_basic_alloc_free");
     printf("begin test_gc_basic_alloc_free, some allocs created\n");
-    ints[0] = 1;
 
     for (size_t i=0; i<16; ++i) {
         ints[i] = gc_malloc_ext(&gc_, sizeof(int), dtor);

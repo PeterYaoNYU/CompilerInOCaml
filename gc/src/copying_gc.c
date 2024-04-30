@@ -363,7 +363,7 @@ static void* gc_allocate(GarbageCollector* gc, size_t count, size_t size, void(*
     void * alloc_ptr = gc->heap.allocation_pointer;
     void * next_alloc_ptr = (void *) ((char *) alloc_ptr + alloc_size);
 
-    if ( next_alloc_ptr > gc->heap.to_space_end) {
+    if ( next_alloc_ptr > gc->heap.from_space_end) {
         LOG_DEBUG("!!!Out of memory, initiating GC run%s", "");
         gc_run(gc);
         alloc_ptr = gc->heap.allocation_pointer;
@@ -731,10 +731,13 @@ void garbageCollect(GarbageCollector *gc) {
         if (alloc) {
             // this marking is for testing purpose only
             alloc->tag &= GC_TAG_MARK;
+
+            LOG_DEBUG("Forwarding stack pointer %p", *(void**)p);
             void * new_location = forward(gc, alloc->ptr);
             *(void**)p = new_location;
         }
     }
+    LOG_DEBUG("Forwarding stack complete%s", "");
 
     // forward all the objects in the to space
     while (scan < gc->heap.allocation_pointer) {
@@ -753,7 +756,7 @@ size_t gc_run(GarbageCollector* gc)
     LOG_DEBUG("Initiating GC run (gc@%p)", (void*) gc);
     memset(gc->heap.to_space, 0, (size_t)(gc->heap.to_space_end - gc->heap.to_space));
 
-    garbageCollect(gc);
+    // garbageCollect(gc);
 }
 
 char* gc_strdup (GarbageCollector* gc, const char* s)

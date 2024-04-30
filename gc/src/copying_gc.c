@@ -552,9 +552,6 @@ size_t getObjectSize(GarbageCollector * gc, void * ptr) {
     return alloc->size;
 }
 
-
-
-
 /**
  * Forward a pointer to the new location in the to space.
  *
@@ -611,15 +608,12 @@ void copyObject(GarbageCollector *gc, void ***scan) {
 
     // size_t object_size = getObjectSize(gc, object);
 
-    for (size_t i = 0; i < object_size; i += sizeof(void *)) {
-        void * field = *(void **)object + i;
-        void * new_field = forward(gc, field);
-        memcpy(field, &new_field, sizeof(void *));
+    for (size_t i = 0; i < object_size; i += sizeof(char *)) {
+        void * field = *(char **)object + i;
+        // void * new_field = forward(gc, field);
+        memcpy(field, gc->heap.allocation_pointer, sizeof(char *));
+        gc->heap.allocation_pointer = (void *) ((char *) gc->heap.allocation_pointer + sizeof(char *));
     }
-
-    LOG_DEBUG("Scan is now at %p", *scan);
-    *scan = (void **)((char *)(*scan) + PTRSIZE);
-    LOG_DEBUG("after incr Scan is now at %p", *scan);
 }
 
 void garbageCollect(GarbageCollector *gc) {
@@ -651,11 +645,18 @@ void garbageCollect(GarbageCollector *gc) {
         if (alloc) {
             // this marking is for testing purpose only
             alloc->tag |= GC_TAG_MARK;
-
             LOG_DEBUG("Forwarding stack pointer %p", *(void**)p);
             void * new_location = forward(gc, alloc->ptr);
+            // this loc is crucial, updating the stack address
+            LOG_DEBUG("Stack location %p", p);
             *(void**)p = new_location;
-            LOG_DEBUG("Forwarded stack pointer's new location %p", *(void**)p);
+            size_t object_size = alloc->size;
+            LOG_DEBUG("Forwarded stack pointer's new location %p", new_location);
+            // gc_allocation_map_remove(gc->allocs, alloc->ptr, false);
+            // LOG_DEBUG("Alloc Size for reinserting into hash map: %zu", object_size);
+            // Allocation * new_alloc = gc_allocation_map_put(gc->allocs, new_location, object_size, NULL);
+            // new_alloc->tag = alloc->tag;
+            // new_alloc->tag |= GC_TAG_MARK;
         }
     }
     LOG_DEBUG("Forwarding stack complete%s", "");
@@ -666,7 +667,10 @@ void garbageCollect(GarbageCollector *gc) {
         LOG_DEBUG("Copying object at %p, and the scan ptr is at %p", **scan_ptr ,*scan_ptr);
         LOG_DEBUG("*scan + 1: %p, scan + 1: %p", *(*scan_ptr + 1), *scan_ptr + 1);
         LOG_DEBUG("*Scan + 2: %p, scan + 1: %p", *(*scan_ptr + 2), *scan_ptr + 2);
-        copyObject(gc, scan_ptr);  
+        copyObject(gc, scan_ptr); 
+        LOG_DEBUG("Scan is now at %p", *scan_ptr);
+        *scan_ptr = (void **)((char *)(*scan_ptr) + PTRSIZE);
+        LOG_DEBUG("after incr Scan is now at %p", *scan_ptr);
     }
 
     LOG_DEBUG("Copying objects complete%s", "");

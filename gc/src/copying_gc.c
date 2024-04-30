@@ -203,6 +203,7 @@ static size_t gc_hash(void *ptr)
 static void gc_allocation_map_resize(AllocationMap* am, size_t new_capacity)
 {
     if (new_capacity <= am->min_capacity) {
+        LOG_DEBUG("Ignoring resize request to %ld (min=%ld)", new_capacity, am->min_capacity);
         return;
     }
     // Replaces the existing items array in the hash table
@@ -225,7 +226,9 @@ static void gc_allocation_map_resize(AllocationMap* am, size_t new_capacity)
     free(am->allocs);
     am->capacity = new_capacity;
     am->allocs = resized_allocs;
+    LOG_DEBUG("Resized allocation map, updating sweep limit (cap=%ld, siz=%ld)", am->capacity, am->size);
     am->sweep_limit = am->size + am->sweep_factor * (am->capacity - am->size);
+    LOG_DEBUG("Resized allocation map complete (cap=%ld, siz=%ld)", am->capacity, am->size);
 }
 
 static bool gc_allocation_map_resize_to_fit(AllocationMap* am)
@@ -266,8 +269,9 @@ static Allocation* gc_allocation_map_put(AllocationMap* am,
         void (*dtor)(void*))
 {
     size_t index = gc_hash(ptr) % am->capacity;
-    LOG_DEBUG("PUT request for allocation ix=%ld", index);
+    LOG_DEBUG("PUT request for allocation ix=%ld, size=%ld", index, size);
     Allocation* alloc = gc_allocation_new(ptr, size, dtor);
+    printf("alloc size: %ld\n", alloc->size);
     Allocation* cur = am->allocs[index];
     Allocation* prev = NULL;
     /* Upsert if ptr is already known (e.g. dtor update). */
@@ -298,7 +302,9 @@ static Allocation* gc_allocation_map_put(AllocationMap* am,
     LOG_DEBUG("AllocationMap insert at ix=%ld", index);
     void* p = alloc->ptr;
     if (gc_allocation_map_resize_to_fit(am)) {
+        LOG_DEBUG("Resized allocation map to fit", "");
         alloc = gc_allocation_map_get(am, p);
+        LOG_DEBUG("Get the new alloc", "");
     }
     return alloc;
 }
@@ -366,8 +372,11 @@ static void* gc_allocate(GarbageCollector* gc, size_t count, size_t size, void(*
         }
     }
 
+    size_t alloc_size = count ? count * size : size;
+
     gc->heap.allocation_pointer = next_alloc_ptr;
-    gc_allocation_map_put(gc->allocs, alloc_ptr, size, NULL);
+    gc_allocation_map_put(gc->allocs, alloc_ptr, alloc_size, NULL);
+    LOG_DEBUG("Allocated %ld bytes @ %p", alloc_size, alloc_ptr);
     return alloc_ptr;
 }
 

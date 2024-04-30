@@ -277,11 +277,9 @@ static char* test_gc_basic_alloc_free()
 
     /* Test that all managed allocations get tagged if the root is present */
     gc_run(&gc_);
-    LOG_DEBUG("Done Garbage Collection", "");
     for (size_t i=0; i<gc_.allocs->capacity; ++i) {
         Allocation* chunk = gc_.allocs->allocs[i];
         while (chunk) {
-            LOG_DEBUG("checking alloc at %p", chunk->ptr);
             mu_assert(chunk->tag & GC_TAG_MARK, "Referenced allocs should be marked");
             // reset for next test
             chunk->tag = GC_TAG_NONE;
@@ -290,12 +288,9 @@ static char* test_gc_basic_alloc_free()
         }
     }
 
-    LOG_DEBUG("Done checking marked allocs", "");
-
     /* Now drop the root allocation */
     ints = NULL;
-    // gc_mark(&gc_);
-    gc_run(&gc_);
+    gc_mark(&gc_);
 
     /* Check that none of the allocations get tagged */
     size_t total = 0;
@@ -310,8 +305,8 @@ static char* test_gc_basic_alloc_free()
     mu_assert(total == 16 * sizeof(int) + 16 * sizeof(int*),
               "Expected number of managed bytes is off");
 
-    // size_t n = gc_sweep(&gc_);
-    // mu_assert(n == total, "Wrong number of collected bytes");
+    size_t n = gc_sweep(&gc_);
+    mu_assert(n == total, "Wrong number of collected bytes");
     mu_assert(DTOR_COUNT == 16, "Failed to call destructor");
     DTOR_COUNT = 0;
     gc_stop(&gc_);

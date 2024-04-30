@@ -137,6 +137,7 @@ void gc_init_heap(GarbageCollector *gc, size_t total_size) {
     gc->heap.from_space_end = gc->heap.to_space;
     gc->heap.to_space_end = (void *) ((char *) heap_space + total_size);
     gc->heap.allocation_pointer = gc->heap.from_space;
+    gc->heap.half_size = total_size / 2;
 }
 
 /**
@@ -345,7 +346,7 @@ static void* gc_mcalloc(size_t count, size_t size)
 
 static bool gc_needs_sweep(GarbageCollector* gc)
 {
-    return gc->allocs->size > gc->allocs->sweep_limit;
+    return gc->allocs->size > gc->heap.half_size;
 }
 
 static void* gc_allocate(GarbageCollector* gc, size_t count, size_t size, void(*dtor)(void*))
@@ -359,7 +360,7 @@ static void* gc_allocate(GarbageCollector* gc, size_t count, size_t size, void(*
         alloc_ptr = gc->heap.allocation_pointer;
         next_alloc_ptr = (char *) alloc_ptr + size;
         if (next_alloc_ptr > gc->heap.to_space_end) {
-            LOG_ERROR("Out of memory%s", "");
+            LOG_CRITICAL("Out of memory%s", "");
             // potentially, expand the semheap here. For now, just return NULL.
             return NULL;
         }
@@ -616,26 +617,6 @@ size_t gc_stop(GarbageCollector* gc)
     return collected;
 }
 
-size_t gc_run(GarbageCollector* gc)
-{
-    LOG_DEBUG("Initiating GC run (gc@%p)", (void*) gc);
-    memset(gc->heap.to_space, 0, (size_t)(gc->heap.to_space_end - gc->heap.to_space));
-
-    garbageCollect(gc);
-}
-
-char* gc_strdup (GarbageCollector* gc, const char* s)
-{
-    size_t len = strlen(s) + 1;
-    void *new = gc_malloc(gc, len);
-
-    if (new == NULL) {
-        return NULL;
-    }
-    return (char*) memcpy(new, s, len);
-}
-
-
 // helper functions for stop and copy
 bool isPointerToFromSpace(GarbageCollector * gc, void * ptr) {
     return ptr >= gc->heap.from_space && ptr < gc->heap.from_space_end;
@@ -649,6 +630,8 @@ size_t getObjectSize(GarbageCollector * gc, void * ptr) {
     Allocation * alloc = gc_allocation_map_get(gc->allocs, ptr);
     return alloc->size;
 }
+
+
 
 
 /**
@@ -726,4 +709,23 @@ void garbageCollect(GarbageCollector *gc) {
     gc->heap.from_space = gc->heap.to_space;
     gc->heap.to_space = temp;
     gc->heap.allocation_pointer = gc->heap.to_space;
+}
+
+size_t gc_run(GarbageCollector* gc)
+{
+    LOG_DEBUG("Initiating GC run (gc@%p)", (void*) gc);
+    memset(gc->heap.to_space, 0, (size_t)(gc->heap.to_space_end - gc->heap.to_space));
+
+    garbageCollect(gc);
+}
+
+char* gc_strdup (GarbageCollector* gc, const char* s)
+{
+    size_t len = strlen(s) + 1;
+    void *new = gc_malloc(gc, len);
+
+    if (new == NULL) {
+        return NULL;
+    }
+    return (char*) memcpy(new, s, len);
 }

@@ -17,6 +17,7 @@ typedef struct Heap {
     void * from_space_end;
     void * to_space_end;
     void * allocation_pointer; // Current pointer in the to space
+    size_t half_size;
 } Heap;
 
 typedef struct GarbageCollector {

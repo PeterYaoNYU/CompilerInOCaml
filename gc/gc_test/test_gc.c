@@ -290,7 +290,7 @@ static char* test_gc_basic_alloc_free()
 
     /* Now drop the root allocation */
     ints = NULL;
-    gc_mark(&gc_);
+    gc_run(&gc_);
 
     /* Check that none of the allocations get tagged */
     size_t total = 0;
@@ -464,15 +464,14 @@ int tests_run = 0;
 static char* test_suite()
 {
     printf("---=[ GC tests\n");
-    // mu_run_test(test_gc_allocation_new_delete);
-    // mu_run_test(test_gc_allocation_map_new_delete);
-    // mu_run_test(test_gc_allocation_map_basic_get);
-    // mu_run_test(test_gc_allocation_map_put_get_remove);
-    // mu_run_test(test_gc_mark_stack);
+    mu_run_test(test_gc_allocation_new_delete);
+    mu_run_test(test_gc_allocation_map_new_delete);
+    mu_run_test(test_gc_allocation_map_basic_get);
+    mu_run_test(test_gc_allocation_map_put_get_remove);
     mu_run_test(test_gc_basic_alloc_free);
     // mu_run_test(test_gc_allocation_map_cleanup);
     // mu_run_test(test_gc_static_allocation);
-    // mu_run_test(test_primes);
+    mu_run_test(test_primes);
     // mu_run_test(test_gc_realloc);
     // mu_run_test(test_gc_pause_resume);
     // mu_run_test(test_gc_strdup);

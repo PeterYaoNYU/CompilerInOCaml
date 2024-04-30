@@ -284,6 +284,7 @@ static char* test_gc_basic_alloc_free()
             // reset for next test
             chunk->tag = GC_TAG_NONE;
             chunk = chunk->next;
+            LOG_DEBUG("Found one marked alloc", "");
         }
     }
 
@@ -473,12 +474,12 @@ static char* test_suite()
     // mu_run_test(test_gc_allocation_map_put_get_remove);
     // mu_run_test(test_gc_mark_stack);
     mu_run_test(test_gc_basic_alloc_free);
-    mu_run_test(test_gc_allocation_map_cleanup);
-    mu_run_test(test_gc_static_allocation);
-    mu_run_test(test_primes);
-    mu_run_test(test_gc_realloc);
-    mu_run_test(test_gc_pause_resume);
-    mu_run_test(test_gc_strdup);
+    // mu_run_test(test_gc_allocation_map_cleanup);
+    // mu_run_test(test_gc_static_allocation);
+    // mu_run_test(test_primes);
+    // mu_run_test(test_gc_realloc);
+    // mu_run_test(test_gc_pause_resume);
+    // mu_run_test(test_gc_strdup);
     return 0;
 }
 

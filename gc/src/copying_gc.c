@@ -665,6 +665,7 @@ void * forward(GarbageCollector * gc, void * ptr) {
     // its first address should be a forwarding address
     void ** f1 = (void **) ptr;
     if (isPointerToToSpace(gc, *f1)) {
+        LOG_DEBUG("Object has already been copied, returning forwarding address %p", *f1);
         return *f1;
     } // object has already been copied, return the forwarding address
     else 
@@ -673,6 +674,14 @@ void * forward(GarbageCollector * gc, void * ptr) {
         void * new_location = gc->heap.allocation_pointer;
         memcpy(new_location, ptr, size);
         gc->heap.allocation_pointer = (void *) ((char *) gc->heap.allocation_pointer + size);
+        LOG_DEBUG("*Original Location + 0: %p", (*(void **)ptr));
+        LOG_DEBUG("*Original Location + 1: %p", ((void*)(*(void **)ptr) + 1));
+        LOG_DEBUG("*Original Location + 2: %p", ((void*)(*(void **)ptr) + 2));
+        LOG_DEBUG("*Original Location + 3: %p", ((void*)(*(void **)ptr) + 3));
+        LOG_DEBUG("*new location + 0: %p", *(void **)(new_location));
+        LOG_DEBUG("*new location + 1: %p", (*(void **)new_location) + 1);
+        LOG_DEBUG("*new location + 2: %p", (*(void **)new_location) + 2);
+        LOG_DEBUG("*new location + 3: %p", (*(void **)new_location) + 3);
 
         // install the forwarding address
         *f1 = new_location;
@@ -680,30 +689,34 @@ void * forward(GarbageCollector * gc, void * ptr) {
     }
 }
 
-void copyObject(GarbageCollector *gc, void **scan) {
-    void * object = *scan;
+void copyObject(GarbageCollector *gc, void ***scan) {
+    void ** object = *scan;
+    LOG_DEBUG("Scan starting at %p", *object);
 
     // for testing purpose only
-    Allocation * alloc = gc_allocation_map_get(gc->allocs, object);
+    Allocation * alloc = gc_allocation_map_get(gc->allocs, *object);
     if (!alloc) {
         return;
     }
     alloc->tag &= GC_TAG_MARK;
     size_t object_size = alloc->size;
+    LOG_DEBUG("Copying object at %p with size %zu", object, object_size);
 
     // size_t object_size = getObjectSize(gc, object);
 
     for (size_t i = 0; i < object_size; i += sizeof(void *)) {
-        void * field = (void *)object + i;
+        void * field = *(void **)object + i;
         void * new_field = forward(gc, field);
         memcpy(field, &new_field, sizeof(void *));
     }
 
-    *scan += object_size;
+    LOG_DEBUG("Scan is now at %p", *scan);
+    *scan = (void **)((char *)(*scan) + object_size);
+    LOG_DEBUG("after incr Scan is now at %p", *scan);
 }
 
 void garbageCollect(GarbageCollector *gc) {
-    void * scan = gc->heap.to_space;
+    void ** scan = gc->heap.to_space;
     gc->heap.allocation_pointer = gc->heap.to_space;
 
     // forward all the roots
@@ -735,14 +748,21 @@ void garbageCollect(GarbageCollector *gc) {
             LOG_DEBUG("Forwarding stack pointer %p", *(void**)p);
             void * new_location = forward(gc, alloc->ptr);
             *(void**)p = new_location;
+            LOG_DEBUG("Forwarded stack pointer's new location %p", *(void**)p);
         }
     }
     LOG_DEBUG("Forwarding stack complete%s", "");
 
+    void *** scan_ptr = &scan;
     // forward all the objects in the to space
-    while (scan < gc->heap.allocation_pointer) {
-        copyObject(gc, scan);  
+    while (*scan_ptr < gc->heap.allocation_pointer) {
+        LOG_DEBUG("Copying object at %p, and the scan ptr is at %p", **scan_ptr ,*scan_ptr);
+        LOG_DEBUG("Scan + 1: %p", *(*scan_ptr + 1));
+        LOG_DEBUG("Scan + 2: %p", *(*scan_ptr + 2));
+        copyObject(gc, scan_ptr);  
     }
+
+    LOG_DEBUG("Copying objects complete%s", "");
 
     // swap the semi-spaces
     void* temp = gc->heap.from_space;
@@ -756,7 +776,7 @@ size_t gc_run(GarbageCollector* gc)
     LOG_DEBUG("Initiating GC run (gc@%p)", (void*) gc);
     memset(gc->heap.to_space, 0, (size_t)(gc->heap.to_space_end - gc->heap.to_space));
 
-    // garbageCollect(gc);
+    garbageCollect(gc);
 }
 
 char* gc_strdup (GarbageCollector* gc, const char* s)

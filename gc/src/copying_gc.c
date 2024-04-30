@@ -675,13 +675,13 @@ void * forward(GarbageCollector * gc, void * ptr) {
         memcpy(new_location, ptr, size);
         gc->heap.allocation_pointer = (void *) ((char *) gc->heap.allocation_pointer + size);
         LOG_DEBUG("*Original Location + 0: %p", (*(void **)ptr));
-        LOG_DEBUG("*Original Location + 1: %p", ((void*)(*(void **)ptr) + 1));
-        LOG_DEBUG("*Original Location + 2: %p", ((void*)(*(void **)ptr) + 2));
-        LOG_DEBUG("*Original Location + 3: %p", ((void*)(*(void **)ptr) + 3));
-        LOG_DEBUG("*new location + 0: %p", *(void **)(new_location));
-        LOG_DEBUG("*new location + 1: %p", (*(void **)new_location) + 1);
-        LOG_DEBUG("*new location + 2: %p", (*(void **)new_location) + 2);
-        LOG_DEBUG("*new location + 3: %p", (*(void **)new_location) + 3);
+        LOG_DEBUG("*Original Location + 1: %p", (*( (void **)ptr + 1)) );
+        LOG_DEBUG("*Original Location + 2: %p", (*((void **)ptr + 2)) );
+        LOG_DEBUG("*Original Location + 3: %p", (*((void **)ptr + 3)) );
+        LOG_DEBUG("*new location + 0: %p", (*(void **)new_location));
+        LOG_DEBUG("*new location + 1: %p", (*( (void **)new_location + 1)) );
+        LOG_DEBUG("*new location + 2: %p", (*( (void **)new_location + 2)) );
+        LOG_DEBUG("*new location + 3: %p", (*( (void **)new_location + 3)) );
 
         // install the forwarding address
         *f1 = new_location;
@@ -700,7 +700,7 @@ void copyObject(GarbageCollector *gc, void ***scan) {
     }
     alloc->tag &= GC_TAG_MARK;
     size_t object_size = alloc->size;
-    LOG_DEBUG("Copying object at %p with size %zu", object, object_size);
+    LOG_DEBUG("Copying object at %p with size %zu", *object, object_size);
 
     // size_t object_size = getObjectSize(gc, object);
 
@@ -711,7 +711,7 @@ void copyObject(GarbageCollector *gc, void ***scan) {
     }
 
     LOG_DEBUG("Scan is now at %p", *scan);
-    *scan = (void **)((char *)(*scan) + object_size);
+    *scan = (void **)((char *)(*scan) + PTRSIZE);
     LOG_DEBUG("after incr Scan is now at %p", *scan);
 }
 
@@ -757,8 +757,8 @@ void garbageCollect(GarbageCollector *gc) {
     // forward all the objects in the to space
     while (*scan_ptr < gc->heap.allocation_pointer) {
         LOG_DEBUG("Copying object at %p, and the scan ptr is at %p", **scan_ptr ,*scan_ptr);
-        LOG_DEBUG("Scan + 1: %p", *(*scan_ptr + 1));
-        LOG_DEBUG("Scan + 2: %p", *(*scan_ptr + 2));
+        LOG_DEBUG("*scan + 1: %p, scan + 1: %p", *(*scan_ptr + 1), *scan_ptr + 1);
+        LOG_DEBUG("*Scan + 2: %p, scan + 1: %p", *(*scan_ptr + 2), *scan_ptr + 2);
         copyObject(gc, scan_ptr);  
     }
 

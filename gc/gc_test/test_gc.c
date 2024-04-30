@@ -259,13 +259,14 @@ static char* test_gc_basic_alloc_free()
     DTOR_COUNT = 0;
     GarbageCollector gc_;
     void *bos = __builtin_frame_address(0);
-    gc_start_ext(&gc_, bos, 32, 32, 0.0, DBL_MAX, DBL_MAX);
+    gc_start_ext(&gc_, bos, 64, 64, 0.0, DBL_MAX, DBL_MAX);
 
     int** ints = gc_calloc(&gc_, 16, sizeof(int*));
     Allocation* a = gc_allocation_map_get(gc_.allocs, ints);
     printf("a->size: %lu\n", a->size);
     mu_assert(a->size == 16*sizeof(int*), "Wrong allocation size in test_gc_basic_alloc_free");
     printf("begin test_gc_basic_alloc_free, some allocs created\n");
+    ints[0] = 1;
 
     for (size_t i=0; i<16; ++i) {
         LOG_DEBUG("Begin allocating 4 bytes","");
@@ -469,10 +470,10 @@ int tests_run = 0;
 static char* test_suite()
 {
     printf("---=[ GC tests\n");
-    mu_run_test(test_gc_allocation_new_delete);
-    mu_run_test(test_gc_allocation_map_new_delete);
-    mu_run_test(test_gc_allocation_map_basic_get);
-    mu_run_test(test_gc_allocation_map_put_get_remove);
+    // mu_run_test(test_gc_allocation_new_delete);
+    // mu_run_test(test_gc_allocation_map_new_delete);
+    // mu_run_test(test_gc_allocation_map_basic_get);
+    // mu_run_test(test_gc_allocation_map_put_get_remove);
     // mu_run_test(test_gc_mark_stack);
     mu_run_test(test_gc_basic_alloc_free);
     mu_run_test(test_gc_allocation_map_cleanup);

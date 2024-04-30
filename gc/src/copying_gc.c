@@ -490,6 +490,7 @@ void gc_start_ext(GarbageCollector* gc,
     initial_capacity = initial_capacity < min_capacity ? min_capacity : initial_capacity;
     gc->allocs = gc_allocation_map_new(min_capacity, initial_capacity,
                                        sweep_factor, downsize_limit, upsize_limit);
+    gc_init_heap(gc, initial_capacity);
     LOG_DEBUG("Created new garbage collector (cap=%ld, siz=%ld).", gc->allocs->capacity,
               gc->allocs->size);
 }

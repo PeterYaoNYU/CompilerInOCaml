@@ -10,7 +10,7 @@ all: $(BUILD_DIR)/test/test_gc
 
 $(BUILD_DIR)/test/%.o: %.c
 	mkdir -p $(@D)
-	$(CC) $(CFLAGS) -MMD -c $< -o $@
+	$(CC) -O0 $(CFLAGS) -MMD -c $< -o $@
 
 SRCS=test_gc.c ../src/log.c
 OBJS=$(SRCS:%.c=$(BUILD_DIR)/test/%.o)
@@ -18,7 +18,7 @@ DEPS=$(OBJS:%.o=%.d)
 
 $(BUILD_DIR)/test/test_gc: $(OBJS)
 	mkdir -p $(@D)
-	$(CC) $(LDFLAGS) $(LDLIBS) $^ -o $@
+	$(CC) -O0 $(LDFLAGS) $(LDLIBS) $^ -o $@
 
 coverage: $(BUILD_DIR)/test/test_gc
 	lcov -b . -d ../build/test/ -c -o ../build/test/coverage-all.info

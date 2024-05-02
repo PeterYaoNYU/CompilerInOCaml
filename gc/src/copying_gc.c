@@ -609,13 +609,9 @@ void copyObject(GarbageCollector *gc, void ***scan) {
 
     // size_t object_size = getObjectSize(gc, object);
 
-    // BUG: one memcpy is enough, this is wrong!
-    for (size_t i = 0; i < object_size; i += sizeof(char *)) {
-        void * field = *(char **)object + i;
-        // void * new_field = forward(gc, field);
-        memcpy(field, gc->heap.allocation_pointer, sizeof(char *));
-        gc->heap.allocation_pointer = (void *) ((char *) gc->heap.allocation_pointer + sizeof(char *));
-    }
+    // BUG FIXED: one memcpy is enough, this is wrong!
+    memcpy(gc->heap.allocation_pointer, object, object_size);
+    gc->heap.allocation_pointer = (void *) ((char *) gc->heap.allocation_pointer + object_size);
 }
 
 void garbageCollect(GarbageCollector *gc) {

@@ -633,8 +633,8 @@ void garbageCollect(GarbageCollector *gc) {
     LOG_DEBUG("From space: %p - %p", gc->heap.from_space, gc->heap.from_space_end);
     LOG_DEBUG("To space: %p - %p", gc->heap.to_space, gc->heap.to_space_end);
 
-    void * old_stack_address[10];
-    void * new_stack_address[10];
+    void * old_stack_address[gc->allocs->size];
+    void * new_stack_address[gc->allocs->size];
     int array_idx = 0;
 
     // forward all the roots

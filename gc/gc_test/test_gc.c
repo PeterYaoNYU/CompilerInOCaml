@@ -276,6 +276,8 @@ static char* test_gc_basic_alloc_free()
     printf("begin test_gc_basic_alloc_free, all allocs created\n");
 
     /* Test that all managed allocations get tagged if the root is present */
+    void * tos = __builtin_frame_address(0);
+    LOG_DEBUG("TOS before function call: %p", tos);
     gc_run(&gc_);
     for (size_t i=0; i<gc_.allocs->capacity; ++i) {
         Allocation* chunk = gc_.allocs->allocs[i];
@@ -295,6 +297,9 @@ static char* test_gc_basic_alloc_free()
     ints = NULL;
     LOG_DEBUG("NULL the INTs: %p", ints);
     LOG_DEBUG("ints location: %p", &ints);
+    tos = __builtin_frame_address(0);
+    LOG_DEBUG("TOS before function call: %p", tos);
+    LOG_DEBUG("gc bos: %p", gc_.bos);
     gc_run(&gc_);
 
     /* Check that none of the allocations get tagged */
@@ -308,6 +313,7 @@ static char* test_gc_basic_alloc_free()
             chunk = chunk->next;
         }
     }
+    LOG_DEBUG("total size: %lu", total);
     mu_assert(total == 16 * sizeof(int) + 16 * sizeof(int*),
               "Expected number of managed bytes is off");
     gc_stop(&gc_);

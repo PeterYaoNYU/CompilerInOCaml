@@ -562,6 +562,7 @@ void * forward(GarbageCollector * gc, void * ptr) {
     // Check if the pointer is in the from space
     // if not, it has already been copied, or is not a pointer at all
     if (!isPointerToFromSpace(gc, ptr)) {
+        LOG_DEBUG("Object is not in the from space, returning %p", ptr);
         return ptr;
     }
 
@@ -610,12 +611,25 @@ void copyObject(GarbageCollector *gc, void **scan) {
 
     // BUG FIXED: one memcpy is enough, this is wrong!
     memcpy(gc->heap.allocation_pointer, object, object_size);
+    // LOG_DEBUG("Copied object to %p", gc->heap.allocation_pointer);
+    gc_allocation_map_remove(gc->allocs, *object, false);
+    *scan = gc->heap.allocation_pointer;
+    LOG_DEBUG("Copying object, changing the address at %p, changing to %p", scan,  gc->heap.allocation_pointer);
+    Allocation *new_alloc = gc_allocation_map_put(gc->allocs, gc->heap.allocation_pointer, object_size, NULL);
+    new_alloc->tag |= GC_TAG_MARK;
     gc->heap.allocation_pointer = (void *) ((char *) gc->heap.allocation_pointer + object_size);
 }
 
 void garbageCollect(GarbageCollector *gc) {
     void ** scan = gc->heap.to_space;
     gc->heap.allocation_pointer = gc->heap.to_space;
+
+    LOG_DEBUG("From space: %p - %p", gc->heap.from_space, gc->heap.from_space_end);
+    LOG_DEBUG("To space: %p - %p", gc->heap.to_space, gc->heap.to_space_end);
+
+    // void * old_stack_address[10];
+    // void * new_stack_address[10];
+    // int array_idx = 0;
 
     // forward all the roots
     LOG_DEBUG("Forwarding roots%s", "");
@@ -637,6 +651,7 @@ void garbageCollect(GarbageCollector *gc) {
     LOG_DEBUG("Forwarding stack%s", "");
     void * tos = __builtin_frame_address(0);
     void * bos = gc->bos;
+    LOG_DEBUG("tos: %p, bos: %p", tos, bos);
     for (char* p = (char*) tos; p <= (char*) bos - PTRSIZE; ++p) {
         Allocation* alloc = gc_allocation_map_get(gc->allocs, *(void**)p);
         if (alloc) {
@@ -649,11 +664,23 @@ void garbageCollect(GarbageCollector *gc) {
             *(void**)p = new_location;
             size_t object_size = alloc->size;
             LOG_DEBUG("Forwarded stack pointer's new location %p", new_location);
-            // gc_allocation_map_remove(gc->allocs, alloc->ptr, false);
-            // LOG_DEBUG("Alloc Size for reinserting into hash map: %zu", object_size);
-            // Allocation * new_alloc = gc_allocation_map_put(gc->allocs, new_location, object_size, NULL);
-            // new_alloc->tag = alloc->tag;
-            // new_alloc->tag |= GC_TAG_MARK;
+            LOG_DEBUG("New location location: %p", &new_location);
+            if (alloc->ptr != new_location) {
+                // old_stack_address[array_idx] = alloc->ptr;
+                // new_stack_address[array_idx] = new_location;
+                // array_idx += 1;
+
+
+                // char old_tag = alloc->tag;
+                // // LOG_DEBUG("removing Old stack pointer allocation %p", alloc->ptr);
+                gc_allocation_map_remove(gc->allocs, alloc->ptr, false);
+                // // LOG_DEBUG("Alloc Size for reinserting into hash map: %zu", object_size);
+                Allocation * new_alloc = gc_allocation_map_put(gc->allocs, new_location, object_size, NULL);
+                new_alloc->tag |= GC_TAG_MARK;
+                // // LOG_DEBUG("New stack pointer allocation %p", &(new_alloc->ptr));
+                // // memset(&alloc, 0, sizeof(Allocation*));
+                // // memset(&new_alloc, 0, sizeof(Allocation*));
+            }
         }
     }
     LOG_DEBUG("Forwarding stack complete%s", "");
@@ -670,14 +697,25 @@ void garbageCollect(GarbageCollector *gc) {
     void* temp = gc->heap.from_space;
     gc->heap.from_space = gc->heap.to_space;
     gc->heap.to_space = temp;
+    temp = gc->heap.from_space_end;
+    gc->heap.from_space_end = gc->heap.to_space_end;
+    gc->heap.to_space_end = temp;
     // gc->heap.allocation_pointer = gc->heap.to_space;
+
+    // for (int i = 0; i < array_idx; i++) {
+    //     size_t object_size = getObjectSize(gc, old_stack_address[i]);
+    //     gc_allocation_map_remove(gc->allocs, old_stack_address[i], false);
+    //     Allocation * new_alloc = gc_allocation_map_put(gc->allocs, new_stack_address[i], object_size, NULL);
+    //     new_alloc->tag |= GC_TAG_MARK;
+    // }
 }
 
 size_t gc_run(GarbageCollector* gc)
 {
     LOG_DEBUG("Initiating GC run (gc@%p)", (void*) gc);
     memset(gc->heap.to_space, 0, (size_t)(gc->heap.to_space_end - gc->heap.to_space));
-
+    void * tos = __builtin_frame_address(0);
+    LOG_DEBUG("tos in gc_run: %p", tos);
     garbageCollect(gc);
 }
 

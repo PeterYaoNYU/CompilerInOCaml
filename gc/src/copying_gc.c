@@ -593,9 +593,9 @@ void * forward(GarbageCollector * gc, void * ptr) {
     }
 }
 
-void copyObject(GarbageCollector *gc, void ***scan) {
+void copyObject(GarbageCollector *gc, void **scan) {
     // BUG: not good, should not need to pass in a pointer
-    void ** object = *scan;
+    void ** object = scan;
     LOG_DEBUG("Scan starting at %p", *object);
 
     // for testing purpose only
@@ -659,18 +659,10 @@ void garbageCollect(GarbageCollector *gc) {
     }
     LOG_DEBUG("Forwarding stack complete%s", "");
 
-    void *** scan_ptr = &scan;
     // forward all the objects in the to space
-    while (*scan_ptr < gc->heap.allocation_pointer) {
-        LOG_DEBUG("Copying object at %p, and the scan ptr is at %p", **scan_ptr ,*scan_ptr);
-        LOG_DEBUG("*scan + 1: %p, scan + 1: %p", *(*scan_ptr + 1), *scan_ptr + 1);
-        LOG_DEBUG("*Scan + 2: %p, scan + 1: %p", *(*scan_ptr + 2), *scan_ptr + 2);
-        copyObject(gc, scan_ptr); 
-        LOG_DEBUG("Scan is now at %p", *scan_ptr);
-        // BUG: should not be PTR_SIZE, but 1 byte at a time, scan, 
-        // if encounter a pointer indeed, should add PTRSIZE, copy object should ret a bool
-        *scan_ptr = (void **)((char *)(*scan_ptr) + PTRSIZE);
-        LOG_DEBUG("after incr Scan is now at %p", *scan_ptr);
+    while (scan < gc->heap.allocation_pointer) {
+        copyObject(gc, scan); 
+        scan = (void **)((char *)scan + 1);
     }
 
     LOG_DEBUG("Copying objects complete%s", "");

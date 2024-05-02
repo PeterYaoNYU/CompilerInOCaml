@@ -594,6 +594,7 @@ void * forward(GarbageCollector * gc, void * ptr) {
 }
 
 void copyObject(GarbageCollector *gc, void ***scan) {
+    // BUG: not good, should not need to pass in a pointer
     void ** object = *scan;
     LOG_DEBUG("Scan starting at %p", *object);
 
@@ -608,6 +609,7 @@ void copyObject(GarbageCollector *gc, void ***scan) {
 
     // size_t object_size = getObjectSize(gc, object);
 
+    // BUG: one memcpy is enough, this is wrong!
     for (size_t i = 0; i < object_size; i += sizeof(char *)) {
         void * field = *(char **)object + i;
         // void * new_field = forward(gc, field);
@@ -669,6 +671,8 @@ void garbageCollect(GarbageCollector *gc) {
         LOG_DEBUG("*Scan + 2: %p, scan + 1: %p", *(*scan_ptr + 2), *scan_ptr + 2);
         copyObject(gc, scan_ptr); 
         LOG_DEBUG("Scan is now at %p", *scan_ptr);
+        // BUG: should not be PTR_SIZE, but 1 byte at a time, scan, 
+        // if encounter a pointer indeed, should add PTRSIZE, copy object should ret a bool
         *scan_ptr = (void **)((char *)(*scan_ptr) + PTRSIZE);
         LOG_DEBUG("after incr Scan is now at %p", *scan_ptr);
     }

@@ -594,7 +594,6 @@ void * forward(GarbageCollector * gc, void * ptr) {
 }
 
 void copyObject(GarbageCollector *gc, void **scan) {
-    // BUG: not good, should not need to pass in a pointer
     void ** object = scan;
     LOG_DEBUG("Scan starting at %p", *object);
 

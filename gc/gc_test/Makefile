@@ -1,6 +1,10 @@
 CC=clang
 CFLAGS=-g -Wall -Wextra -pedantic -I../include -fprofile-arcs -ftest-coverage -O0
 LDFLAGS=-g -L../build/src -L../build/test --coverage
+
+CFLAGS=-g -Wall -Wextra -I../include -O0
+LDFLAGS=-g -L../build/src -L../build/test 
+
 LDLIBS=
 RM=rm
 BUILD_DIR=../build
@@ -12,7 +16,7 @@ $(BUILD_DIR)/test/%.o: %.c
 	mkdir -p $(@D)
 	$(CC) -O0 $(CFLAGS) -MMD -c $< -o $@
 
-SRCS=test_gc.c ../src/log.c
+SRCS?=test_gc.c ../src/log.c
 OBJS=$(SRCS:%.c=$(BUILD_DIR)/test/%.o)
 DEPS=$(OBJS:%.o=%.d)
 
@@ -37,3 +41,6 @@ distclean: clean
 	$(RM) -f $(BUILD_DIR)/test/test_gc
 	$(RM) -f $(BUILD_DIR)/test/*gcda
 	$(RM) -f $(BUILD_DIR)/test/*gcno
+
+check:
+	$(BUILD_DIR)/test/test_gc

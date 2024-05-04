@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include "minunit.h"
 
-// #include "../src/gc.c"
-#include "../src/copying_gc.c"
+#include "../src/gc.c"
+// #include "../src/copying_gc.c"
 
 #define UNUSED(x) (void)(x)
 
@@ -319,9 +319,9 @@ static char* test_gc_basic_alloc_free()
     }
 
     LOG_DEBUG("begin test_gc_basic_alloc_free, all allocs marked", "");
-    // gcmap_print(&gc_);
-    // printf("from space: %p - %p\n",gc_.heap.from_space, gc_.heap.from_space_end);
-    // printf("to space: %p - %p\n",gc_.heap.to_space, gc_.heap.to_space_end);
+    gcmap_print(&gc_);
+    printf("from space: %p - %p\n",gc_.heap.from_space, gc_.heap.from_space_end);
+    printf("to space: %p - %p\n",gc_.heap.to_space, gc_.heap.to_space_end);
 
     /* Now drop the root allocation */
     ints = NULL;
@@ -331,9 +331,9 @@ static char* test_gc_basic_alloc_free()
     LOG_DEBUG("TOS before function call: %p", tos);
     LOG_DEBUG("gc bos: %p", gc_.bos);
     gc_run(&gc_);
-    // gcmap_print(&gc_);
-    // printf("from space: %p - %p\n",gc_.heap.from_space, gc_.heap.from_space_end);
-    // printf("to space: %p - %p\n",gc_.heap.to_space, gc_.heap.to_space_end);
+    gcmap_print(&gc_);
+    printf("from space: %p - %p\n",gc_.heap.from_space, gc_.heap.from_space_end);
+    printf("to space: %p - %p\n",gc_.heap.to_space, gc_.heap.to_space_end);
 
     /* Check that none of the allocations get tagged */
     size_t total = 0;

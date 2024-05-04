@@ -3,13 +3,19 @@
 #include <stdlib.h>
 #include "minunit.h"
 
-#include "../src/gc.c"
-// #include "../src/copying_gc.c"
+#include<time.h>
+
+
+// #include "../src/gc.c"
+#include "../src/perf_copying_gc.c"
 
 #define UNUSED(x) (void)(x)
 
 static size_t DTOR_COUNT = 0;
 
+int array_length = 100000;
+
+int column_length = 1000;
 static char* test_primes()
 {
     /*
@@ -286,69 +292,81 @@ static char* test_gc_basic_alloc_free()
     DTOR_COUNT = 0;
     GarbageCollector gc_;
     void *bos = __builtin_frame_address(0);
-    gc_start_ext(&gc_, bos, 1024, 1024, 0.0, DBL_MAX, DBL_MAX);
+    gc_start_ext(&gc_, bos, 1024*1000000, 1024*1000000, 0.0, DBL_MAX, DBL_MAX);
 
-    int** ints = gc_calloc(&gc_, 16, sizeof(int*));
+    clock_t start, end;
+    double cpu_time_used;
+    start = clock();
+    int** ints = gc_calloc(&gc_, array_length, sizeof(int*));
     Allocation* a = gc_allocation_map_get(gc_.allocs, ints);
     printf("a->size: %lu\n", a->size);
-    mu_assert(a->size == 16*sizeof(int*), "Wrong allocation size in test_gc_basic_alloc_free");
+    // mu_assert(a->size == 100*sizeof(int*), "Wrong allocation size in test_gc_basic_alloc_free");
     printf("begin test_gc_basic_alloc_free, some allocs created\n");
 
-    for (size_t i=0; i<16; ++i) {
-        ints[i] = gc_malloc_ext(&gc_, sizeof(int), dtor);
+    for (size_t i=0; i<array_length; ++i) {
+        ints[i] = gc_malloc_ext(&gc_, column_length * sizeof(int), dtor);
         *ints[i] = 42;
         LOG_DEBUG("gc alloc size: %lu", gc_.allocs->size);
     }
-    mu_assert(gc_.allocs->size == 17, "Wrong allocation map size");
+    end = clock();
+    // mu_assert(gc_.allocs->size == 17, "Wrong allocation map size");
     printf("begin test_gc_basic_alloc_free, all allocs created\n");
+    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+    printf("allocation took %f seconds.\n", cpu_time_used);
 
     /* Test that all managed allocations get tagged if the root is present */
     void * tos = __builtin_frame_address(0);
     LOG_DEBUG("TOS before function call: %p", tos);
+    
+    start = clock();
     gc_run(&gc_);
-    for (size_t i=0; i<gc_.allocs->capacity; ++i) {
-        Allocation* chunk = gc_.allocs->allocs[i];
-        while (chunk) {
-            LOG_DEBUG("Checking ptr mark: %p", chunk->ptr);
-            mu_assert(chunk->tag & GC_TAG_MARK, "Referenced allocs should be marked");
-            // reset for next test
-            chunk->tag = GC_TAG_NONE;
-            chunk = chunk->next;
-            LOG_DEBUG("Found one marked alloc", "");
-        }
+    end = clock();
+    // mu_assert(gc_.allocs->size == 17, "Wrong allocation map size");
+    printf("pure gc_run\n");
+    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+    printf("gc_run took %f seconds.\n", cpu_time_used);
+
+
+    // gcmap_print(&gc_);
+    // printf("from space: %p - %p\n",gc_.heap.from_space, gc_.heap.from_space_end);
+    // printf("to space: %p - %p\n",gc_.heap.to_space, gc_.heap.to_space_end);
+    LOG_INFO("NULL half of the INTs: %p", ints);
+    for (size_t i=0; i<array_length/2; ++i) {
+        ints[i] = NULL;
     }
 
-    LOG_DEBUG("begin test_gc_basic_alloc_free, all allocs marked", "");
-    gcmap_print(&gc_);
-    printf("from space: %p - %p\n",gc_.heap.from_space, gc_.heap.from_space_end);
-    printf("to space: %p - %p\n",gc_.heap.to_space, gc_.heap.to_space_end);
+    start = clock();
+    gc_run(&gc_);
+    end = clock();
+    // mu_assert(gc_.allocs->size == 17, "Wrong allocation map size");
+    printf("gc_run\n");
+    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+    printf("gc_run took %f seconds.\n", cpu_time_used);
 
     /* Now drop the root allocation */
     ints = NULL;
-    LOG_DEBUG("NULL the INTs: %p", ints);
+    LOG_INFO("NULL the INTs: %p", ints);
     LOG_DEBUG("ints location: %p", &ints);
     tos = __builtin_frame_address(0);
     LOG_DEBUG("TOS before function call: %p", tos);
     LOG_DEBUG("gc bos: %p", gc_.bos);
-    gc_run(&gc_);
-    gcmap_print(&gc_);
-    printf("from space: %p - %p\n",gc_.heap.from_space, gc_.heap.from_space_end);
-    printf("to space: %p - %p\n",gc_.heap.to_space, gc_.heap.to_space_end);
 
-    /* Check that none of the allocations get tagged */
-    size_t total = 0;
-    for (size_t i=0; i<gc_.allocs->capacity; ++i) {
-        Allocation* chunk = gc_.allocs->allocs[i];
-        while (chunk) {
-            LOG_DEBUG("Checking ptr mark: %p", chunk->ptr);
-            mu_assert(!(chunk->tag & GC_TAG_MARK), "Unreferenced allocs should not be marked");
-            total += chunk->size;
-            chunk = chunk->next;
-        }
-    }
-    LOG_DEBUG("total size: %lu", total);
-    mu_assert(total == 16 * sizeof(int) + 16 * sizeof(int*),
-              "Expected number of managed bytes is off");
+
+    start = clock();
+    gc_run(&gc_);
+    end = clock();
+    // mu_assert(gc_.allocs->size == 17, "Wrong allocation map size");
+    printf("gc_run\n");
+    cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+    printf("gc_run took %f seconds.\n", cpu_time_used);
+
+
+    // gcmap_print(&gc_);
+    // printf("from space: %p - %p\n",gc_.heap.from_space, gc_.heap.from_space_end);
+    // printf("to space: %p - %p\n",gc_.heap.to_space, gc_.heap.to_space_end);
+
+    // mu_assert(total == 16 * sizeof(int) + 16 * sizeof(int*),
+    //           "Expected number of managed bytes is off");
     gc_stop(&gc_);
     LOG_DEBUG("end test_gc_basic_alloc_free", "");
     return NULL;

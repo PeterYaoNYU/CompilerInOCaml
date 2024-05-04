@@ -737,6 +737,11 @@ size_t gc_run(GarbageCollector* gc)
     LOG_DEBUG("To space cleared", "");
     void * tos = __builtin_frame_address(0);
     LOG_DEBUG("tos in gc_run: %p", tos);
+
+    jmp_buf ctx;
+    memset(&ctx, 0, sizeof(jmp_buf));
+    setjmp(ctx);
+
     garbageCollect(gc);
 }
 

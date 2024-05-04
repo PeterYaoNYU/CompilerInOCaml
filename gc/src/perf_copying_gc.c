@@ -1,4 +1,4 @@
-#include "gc.h"
+#include "copying_gc.h"
 #include "log.h"
 
 #include <errno.h>
@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 //#include "primes.h"
+
+#include <sys/mman.h>
 
 /*
  * Set log level for this compilation unit. If set to LOGLEVEL_DEBUG,
@@ -43,7 +45,6 @@ GarbageCollector gc; // global GC object
 
 static bool is_prime(size_t n)
 {
-    /* https://stackoverflow.com/questions/1538644/c-determine-if-a-number-is-prime */
     if (n <= 3)
         return n > 1;     // as 2 and 3 are prime
     else if (n % 2==0 || n % 3==0)
@@ -130,6 +131,17 @@ typedef struct AllocationMap {
     Allocation** allocs;
 } AllocationMap;
 
+
+void gc_init_heap(GarbageCollector *gc, size_t total_size) {
+    void * heap_space = malloc(total_size);
+    gc->heap.from_space = heap_space;
+    gc->heap.to_space = (void *) ((char *) heap_space + total_size / 2);
+    gc->heap.from_space_end = gc->heap.to_space;
+    gc->heap.to_space_end = (void *) ((char *) heap_space + total_size);
+    gc->heap.allocation_pointer = gc->heap.from_space;
+    gc->heap.half_size = total_size / 2;
+}
+
 /**
  * Determine the current load factor of an `AllocationMap`.
  *
@@ -193,6 +205,7 @@ static size_t gc_hash(void *ptr)
 static void gc_allocation_map_resize(AllocationMap* am, size_t new_capacity)
 {
     if (new_capacity <= am->min_capacity) {
+        LOG_DEBUG("Ignoring resize request to %ld (min=%ld)", new_capacity, am->min_capacity);
         return;
     }
     // Replaces the existing items array in the hash table
@@ -206,7 +219,7 @@ static void gc_allocation_map_resize(AllocationMap* am, size_t new_capacity)
         while (alloc) {
             Allocation* next_alloc = alloc->next;
             size_t new_index = gc_hash(alloc->ptr) % new_capacity;
-            printf("test hash: %ld\n", new_index);
+            // printf("test hash: %ld\n", new_index);
             alloc->next = resized_allocs[new_index];
             resized_allocs[new_index] = alloc;
             alloc = next_alloc;
@@ -215,7 +228,9 @@ static void gc_allocation_map_resize(AllocationMap* am, size_t new_capacity)
     free(am->allocs);
     am->capacity = new_capacity;
     am->allocs = resized_allocs;
+    LOG_DEBUG("Resized allocation map, updating sweep limit (cap=%ld, siz=%ld)", am->capacity, am->size);
     am->sweep_limit = am->size + am->sweep_factor * (am->capacity - am->size);
+    LOG_DEBUG("Resized allocation map complete (cap=%ld, siz=%ld)", am->capacity, am->size);
 }
 
 static bool gc_allocation_map_resize_to_fit(AllocationMap* am)
@@ -256,8 +271,9 @@ static Allocation* gc_allocation_map_put(AllocationMap* am,
         void (*dtor)(void*))
 {
     size_t index = gc_hash(ptr) % am->capacity;
-    LOG_DEBUG("PUT request for allocation ix=%ld", index);
+    LOG_DEBUG("PUT request for allocation ix=%ld, size=%ld", index, size);
     Allocation* alloc = gc_allocation_new(ptr, size, dtor);
+    // printf("alloc size: %ld\n", alloc->size);
     Allocation* cur = am->allocs[index];
     Allocation* prev = NULL;
     /* Upsert if ptr is already known (e.g. dtor update). */
@@ -288,7 +304,9 @@ static Allocation* gc_allocation_map_put(AllocationMap* am,
     LOG_DEBUG("AllocationMap insert at ix=%ld", index);
     void* p = alloc->ptr;
     if (gc_allocation_map_resize_to_fit(am)) {
+        LOG_DEBUG("Resized allocation map to fit", "");
         alloc = gc_allocation_map_get(am, p);
+        LOG_DEBUG("Get the new alloc", "");
     }
     return alloc;
 }
@@ -336,41 +354,33 @@ static void* gc_mcalloc(size_t count, size_t size)
 
 static bool gc_needs_sweep(GarbageCollector* gc)
 {
-    return gc->allocs->size > gc->allocs->sweep_limit;
+    return gc->allocs->size > gc->heap.half_size;
 }
 
 static void* gc_allocate(GarbageCollector* gc, size_t count, size_t size, void(*dtor)(void*))
 {
-    /* Allocation logic that generalizes over malloc/calloc. */
-
-    /* Check if we reached the high-water mark and need to clean up */
-    if (gc_needs_sweep(gc) && !gc->paused) {
-        size_t freed_mem = gc_run(gc);
-        LOG_DEBUG("Garbage collection cleaned up %lu bytes.", freed_mem);
-    }
-    /* With cleanup out of the way, attempt to allocate memory */
-    void* ptr = gc_mcalloc(count, size);
     size_t alloc_size = count ? count * size : size;
-    /* If allocation fails, force an out-of-policy run to free some memory and try again. */
-    if (!ptr && !gc->paused && (errno == EAGAIN || errno == ENOMEM)) {
+
+    /* Allocation logic that generalizes over malloc/calloc. */
+    void * alloc_ptr = gc->heap.allocation_pointer;
+    void * next_alloc_ptr = (void *) ((char *) alloc_ptr + alloc_size);
+
+    if ( next_alloc_ptr > gc->heap.from_space_end) {
+        LOG_DEBUG("!!!Out of memory, initiating GC run%s", "");
         gc_run(gc);
-        ptr = gc_mcalloc(count, size);
-    }
-    /* Start managing the memory we received from the system */
-    if (ptr) {
-        LOG_DEBUG("Allocated %zu bytes at %p", alloc_size, (void*) ptr);
-        Allocation* alloc = gc_allocation_map_put(gc->allocs, ptr, alloc_size, dtor);
-        /* Deal with metadata allocation failure */
-        if (alloc) {
-            LOG_DEBUG("Managing %zu bytes at %p", alloc_size, (void*) alloc->ptr);
-            ptr = alloc->ptr;
-        } else {
-            /* We failed to allocate the metadata, fail cleanly. */
-            free(ptr);
-            ptr = NULL;
+        alloc_ptr = gc->heap.allocation_pointer;
+        next_alloc_ptr = (char *) alloc_ptr + size;
+        if (next_alloc_ptr > gc->heap.to_space_end) {
+            LOG_CRITICAL("Out of memory%s", "");
+            // potentially, expand the semheap here. For now, just return NULL.
+            return NULL;
         }
     }
-    return ptr;
+
+    gc->heap.allocation_pointer = next_alloc_ptr;
+    gc_allocation_map_put(gc->allocs, alloc_ptr, alloc_size, NULL);
+    LOG_DEBUG("Allocated %ld bytes @ %p", alloc_size, alloc_ptr);
+    return alloc_ptr;
 }
 
 static void gc_make_root(GarbageCollector* gc, void* ptr)
@@ -483,6 +493,7 @@ void gc_start_ext(GarbageCollector* gc,
     initial_capacity = initial_capacity < min_capacity ? min_capacity : initial_capacity;
     gc->allocs = gc_allocation_map_new(min_capacity, initial_capacity,
                                        sweep_factor, downsize_limit, upsize_limit);
+    gc_init_heap(gc, initial_capacity);
     LOG_DEBUG("Created new garbage collector (cap=%ld, siz=%ld).", gc->allocs->capacity,
               gc->allocs->size);
 }
@@ -497,100 +508,7 @@ void gc_resume(GarbageCollector* gc)
     gc->paused = false;
 }
 
-void gc_mark_alloc(GarbageCollector* gc, void* ptr)
-{
-    Allocation* alloc = gc_allocation_map_get(gc->allocs, ptr);
-    /* Mark if alloc exists and is not tagged already, otherwise skip */
-    if (alloc && !(alloc->tag & GC_TAG_MARK)) {
-        LOG_DEBUG("Marking allocation (ptr=%p)", ptr);
-        alloc->tag |= GC_TAG_MARK;
-        /* Iterate over allocation contents and mark them as well */
-        LOG_DEBUG("Checking allocation (ptr=%p, size=%lu) contents", ptr, alloc->size);
-        for (char* p = (char*) alloc->ptr;
-                p <= (char*) alloc->ptr + alloc->size - PTRSIZE;
-                ++p) {
-            LOG_DEBUG("Checking allocation (ptr=%p) @%lu with value %p",
-                      ptr, p-((char*) alloc->ptr), *(void**)p);
-            gc_mark_alloc(gc, *(void**)p);
-        }
-    }
-}
 
-void gc_mark_stack(GarbageCollector* gc)
-{
-    LOG_DEBUG("Marking the stack (gc@%p) in increments of %ld", (void*) gc, sizeof(char));
-    void *tos = __builtin_frame_address(0);
-    void *bos = gc->bos;
-    /* The stack grows towards smaller memory addresses, hence we scan tos->bos.
-     * Stop scanning once the distance between tos & bos is too small to hold a valid pointer */
-    for (char* p = (char*) tos; p <= (char*) bos - PTRSIZE; ++p) {
-        gc_mark_alloc(gc, *(void**)p);
-    }
-}
-
-void gc_mark_roots(GarbageCollector* gc)
-{
-    LOG_DEBUG("Marking roots%s", "");
-    for (size_t i = 0; i < gc->allocs->capacity; ++i) {
-        Allocation* chunk = gc->allocs->allocs[i];
-        while (chunk) {
-            if (chunk->tag & GC_TAG_ROOT) {
-                LOG_DEBUG("Marking root @ %p", chunk->ptr);
-                gc_mark_alloc(gc, chunk->ptr);
-            }
-            chunk = chunk->next;
-        }
-    }
-}
-
-void gc_mark(GarbageCollector* gc)
-{
-    /* Note: We only look at the stack and the heap, and ignore BSS. */
-    LOG_DEBUG("Initiating GC mark (gc@%p)", (void*) gc);
-    /* Scan the heap for roots */
-    gc_mark_roots(gc);
-    /* Dump registers onto stack and scan the stack */
-    void (*volatile _mark_stack)(GarbageCollector*) = gc_mark_stack;
-    jmp_buf ctx;
-    memset(&ctx, 0, sizeof(jmp_buf));
-    // the setjmp function effectively dumps the registers onto the stack, by saving them into a variable called 
-    // ctx, and then returns 0.
-    setjmp(ctx);
-    _mark_stack(gc);
-}
-
-size_t gc_sweep(GarbageCollector* gc)
-{
-    LOG_DEBUG("Initiating GC sweep (gc@%p)", (void*) gc);
-    size_t total = 0;
-    for (size_t i = 0; i < gc->allocs->capacity; ++i) {
-        Allocation* chunk = gc->allocs->allocs[i];
-        Allocation* next = NULL;
-        /* Iterate over separate chaining */
-        while (chunk) {
-            if (chunk->tag & GC_TAG_MARK) {
-                LOG_DEBUG("Found used allocation %p (ptr=%p)", (void*) chunk, (void*) chunk->ptr);
-                /* unmark */
-                chunk->tag &= ~GC_TAG_MARK;
-                chunk = chunk->next;
-            } else {
-                LOG_DEBUG("Found unused allocation %p (%lu bytes @ ptr=%p)", (void*) chunk, chunk->size, (void*) chunk->ptr);
-                /* no reference to this chunk, hence delete it */
-                total += chunk->size;
-                if (chunk->dtor) {
-                    chunk->dtor(chunk->ptr);
-                }
-                free(chunk->ptr);
-                /* and remove it from the bookkeeping */
-                next = chunk->next;
-                gc_allocation_map_remove(gc->allocs, chunk->ptr, false);
-                chunk = next;
-            }
-        }
-    }
-    gc_allocation_map_resize_to_fit(gc->allocs);
-    return total;
-}
 
 /**
  * Unset the ROOT tag on all roots on the heap.
@@ -614,16 +532,204 @@ void gc_unroot_roots(GarbageCollector* gc)
 size_t gc_stop(GarbageCollector* gc)
 {
     gc_unroot_roots(gc);
-    size_t collected = gc_sweep(gc);
+    // size_t collected = gc_sweep(gc);
     gc_allocation_map_delete(gc->allocs);
-    return collected;
+    return 0;
+}
+
+// helper functions for stop and copy
+bool isPointerToFromSpace(GarbageCollector * gc, void * ptr) {
+    return ptr >= gc->heap.from_space && ptr < gc->heap.from_space_end;
+}
+
+bool isPointerToToSpace(GarbageCollector * gc, void * ptr) {
+    return ptr >= gc->heap.to_space && ptr < gc->heap.to_space_end;
+}
+
+size_t getObjectSize(GarbageCollector * gc, void * ptr) {
+    Allocation * alloc = gc_allocation_map_get(gc->allocs, ptr);
+    if (!alloc) {
+        return 0;
+    }
+    return alloc->size;
+}
+
+/**
+ * Forward a pointer to the new location in the to space.
+ *
+ * @param gc The garbage collector
+ * @param ptr The pointer to the memory to manage.
+ */
+void * forward(GarbageCollector * gc, void * ptr) {
+    // Check if the pointer is in the from space
+    // if not, it has already been copied, or is not a pointer at all
+    if (!isPointerToFromSpace(gc, ptr)) {
+        LOG_DEBUG("Object is not in the from space, returning %p", ptr);
+        return ptr;
+    }
+
+    // if the object has already been copied, return the new pointer
+    // its first address should be a forwarding address
+    LOG_DEBUG("Old heap from space: %p", gc->heap.from_space);
+    void ** f1 = (void **) ptr;
+    if (isPointerToToSpace(gc, *f1)) {
+        LOG_DEBUG("Object has already been copied, returning forwarding address %p", *f1);
+        LOG_DEBUG("Old heap from space: %p", gc->heap.from_space);
+        return *f1;
+    } // object has already been copied, return the forwarding address
+    else 
+    {
+        size_t size = getObjectSize (gc, ptr);
+        void * new_location = gc->heap.allocation_pointer;
+        memcpy(new_location, ptr, size);
+        gc->heap.allocation_pointer = (void *) ((char *) gc->heap.allocation_pointer + size);
+        LOG_DEBUG("*Original Location: %p", (*(void **)ptr));
+        LOG_DEBUG("*new location: %p", (*(void **)new_location));
+
+        // install the forwarding address
+        *f1 = new_location;
+        return new_location;
+    }
+}
+
+void copyObject(GarbageCollector *gc, void **scan) {
+    void ** object = scan;
+    LOG_DEBUG("Scan starting at %p", *object);
+
+    // for testing purpose only
+    Allocation * alloc = gc_allocation_map_get(gc->allocs, *object);
+    if (!alloc) {
+        return;
+    }
+    alloc->tag |= GC_TAG_MARK;
+    size_t object_size = alloc->size;
+    LOG_DEBUG("Copying object at %p with size %zu", *object, object_size);
+
+    // size_t object_size = getObjectSize(gc, object);
+
+    // BUG FIXED: one memcpy is enough, this is wrong!
+    memcpy(gc->heap.allocation_pointer, object, object_size);
+    // LOG_DEBUG("Copied object to %p", gc->heap.allocation_pointer);
+    gc_allocation_map_remove(gc->allocs, *object, false);
+    *scan = gc->heap.allocation_pointer;
+    LOG_DEBUG("Copying object, changing the address at %p, changing to %p", scan,  gc->heap.allocation_pointer);
+    Allocation *new_alloc = gc_allocation_map_put(gc->allocs, gc->heap.allocation_pointer, object_size, NULL);
+    new_alloc->tag |= GC_TAG_MARK;
+    gc->heap.allocation_pointer = (void *) ((char *) gc->heap.allocation_pointer + object_size);
+}
+
+void garbageCollect(GarbageCollector *gc) {
+    void ** scan = gc->heap.to_space + 8;
+    LOG_DEBUG("to space: %p", gc->heap.to_space);
+    gc->heap.allocation_pointer = gc->heap.to_space + 8;
+    LOG_DEBUG("Allocation pointer: %p", gc->heap.allocation_pointer);
+
+    LOG_DEBUG("From space: %p - %p", gc->heap.from_space, gc->heap.from_space_end);
+    LOG_DEBUG("To space: %p - %p", gc->heap.to_space, gc->heap.to_space_end);
+
+    void * old_stack_address[gc->allocs->size];
+    void * new_stack_address[gc->allocs->size];
+    int array_idx = 0;
+
+    // forward all the roots
+    // LOG_DEBUG("Forwarding roots%s", "");
+    // for (size_t i = 0; i < gc->allocs->capacity; ++i) {
+    //     Allocation* chunk = gc->allocs->allocs[i];
+    //     while (chunk) {
+    //         if (chunk->tag & GC_TAG_ROOT) {
+    //             // this marking is for testing purpose only 
+    //             chunk->tag |= GC_TAG_MARK;
+    //             void * new_location = forward(gc, chunk->ptr);
+    //             chunk->ptr = new_location;
+    //         }
+    //         chunk = chunk->next;
+    //     }
+    // }
+
+
+    // What is missing: copying the pointers in the stack and the registers
+    // with our current implementation, we don't make them roots
+    LOG_DEBUG("Forwarding stack%s", "");
+    void * tos = __builtin_frame_address(0);
+    void * bos = gc->bos;
+    LOG_DEBUG("tos: %p, bos: %p", tos, bos);
+    LOG_DEBUG("before anything happens","");
+    // for(char* p = (char*) tos; p <= (char*) bos - PTRSIZE; ++p) {
+    //     LOG_DEBUG("%p: %p", p, *(void**)p);
+    // }
+    for (char* p = (char*) tos; p <= (char*) bos - PTRSIZE; ++p) {
+        Allocation* alloc = gc_allocation_map_get(gc->allocs, *(void**)p);
+        if (alloc) {
+            LOG_DEBUG("Forwarding stack pointer %p", *(void**)p);
+            void * new_location = forward(gc, alloc->ptr);
+            // this loc is crucial, updating the stack address
+            LOG_DEBUG("Stack location %p", p);
+            LOG_DEBUG("Old heap from space: %p", gc->heap.from_space);
+            void* temp = gc->heap.from_space;
+            *(void**)p = new_location;
+            LOG_DEBUG("P changed", "");
+            LOG_DEBUG("*P address: %p, old heap from space address: %p", p, &(gc->heap.from_space));
+            gc->heap.from_space = temp;
+            LOG_DEBUG("Old heap from space: %p", gc->heap.from_space);
+
+            size_t object_size = alloc->size;
+            LOG_DEBUG("Forwarded stack pointer's new location %p", new_location);
+            LOG_DEBUG("New location location: %p", &new_location);
+            if (alloc->ptr != new_location) {
+                old_stack_address[array_idx] = alloc->ptr;
+                new_stack_address[array_idx] = new_location;
+                array_idx += 1;
+            }
+        }
+        LOG_DEBUG("Old heap from space: %p", gc->heap.from_space);
+
+    }
+    LOG_DEBUG("Forwarding stack complete%s", "");
+    LOG_DEBUG("Old heap from space: %p", gc->heap.from_space);
+
+
+    // forward all the objects in the to space
+    while (scan < gc->heap.allocation_pointer) {
+        copyObject(gc, scan); 
+        scan = (void **)((char *)scan + 1);
+    }
+
+    LOG_DEBUG("Copying objects complete%s", "");
+
+    // swap the semi-spaces
+    void* temp = gc->heap.from_space;
+    LOG_DEBUG("Old heap from space: %p", temp);
+    gc->heap.from_space = gc->heap.to_space;
+    gc->heap.to_space = temp;
+    temp = gc->heap.from_space_end;
+    gc->heap.from_space_end = gc->heap.to_space_end;
+    gc->heap.to_space_end = temp;
+    LOG_DEBUG("Swapped semi-spaces%s", "");
+    LOG_DEBUG("New from space begin %p, end %p", gc->heap.from_space, gc->heap.from_space_end);
+    LOG_DEBUG("New to space begin %p, end %p", gc->heap.to_space, gc->heap.to_space_end);
+    // gc->heap.allocation_pointer = gc->heap.to_space;
+
+    for (int i = 0; i < array_idx; i++) {
+        size_t object_size = getObjectSize(gc, old_stack_address[i]);
+        LOG_DEBUG("before remove Object size: %zu", object_size);
+        if (object_size == 0) {
+            continue;
+        }
+        gc_allocation_map_remove(gc->allocs, old_stack_address[i], false);
+        Allocation * new_alloc = gc_allocation_map_put(gc->allocs, new_stack_address[i], object_size, NULL);
+        new_alloc->tag |= GC_TAG_MARK;
+    }
 }
 
 size_t gc_run(GarbageCollector* gc)
 {
     LOG_DEBUG("Initiating GC run (gc@%p)", (void*) gc);
-    gc_mark(gc);
-    return gc_sweep(gc);
+    LOG_DEBUG("to space begin: %p, to space end: %p, size: %lu", gc->heap.to_space, gc->heap.to_space_end, (size_t)(gc->heap.to_space_end - gc->heap.to_space));
+    memset(gc->heap.to_space, 0, (size_t)(gc->heap.to_space_end - gc->heap.to_space));
+    LOG_DEBUG("To space cleared", "");
+    void * tos = __builtin_frame_address(0);
+    LOG_DEBUG("tos in gc_run: %p", tos);
+    garbageCollect(gc);
 }
 
 char* gc_strdup (GarbageCollector* gc, const char* s)

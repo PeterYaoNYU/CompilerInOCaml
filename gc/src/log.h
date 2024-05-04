@@ -3,7 +3,7 @@
 
 #include <stdio.h>
 
-#define LOGLEVEL LOGLEVEL_DEBUG
+#define LOGLEVEL LOGLEVEL_INFO
 
 enum {
     LOGLEVEL_CRITICAL,

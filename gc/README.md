@@ -6,9 +6,13 @@
 # Progress
 
 - [x] Passed all tests converting cish output to legitimate c code
-- [ ] Integrating the mark and sweep garbage collector and tests if it is working correctly
-- [ ] Code the stop and copy garbage collector
-- [ ] benchmarking the performance. Memory locality, the stop interval, overall runtime, memory patter. Main tool is Linux perf. 
+- [x] Integrating the mark and sweep garbage collector and tests if it is working correctly
+- [x] Code the stop and copy garbage collector
+- [x] benchmarking the performance. Memory locality, the stop interval, overall runtime, memory patter. Main tool is Linux perf.
+
+# Reproducibility:
+The experiment and benchmark is handled by another team member at the other branch.   
+For general testing, cd into gc_test and call make is enough. The tests will be run automatically. 
 
 # update
 assemble
